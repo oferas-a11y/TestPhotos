@@ -1,0 +1,17 @@
+﻿# Windows
+Thumbs.db
+Desktop.ini
+
+# Image editors / previews
+*.aux
+*.tmp
+*.cache
+
+# VSCode
+.vscode/
+
+# OS cruft
+.DS_Store
+
+# Git LFS will handle big media; still ignore raw caches
+*.lrprev
