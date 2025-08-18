@@ -32,7 +32,12 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
+        sudo apt-get install -y libgl1-mesa-dev libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libxrandr2 libxss1 libxcursor1 libxcomposite1 libasound2 libxi6 libxtst6 xvfb
+    
+    - name: Start virtual display
+      run: |
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
     
     - name: Install Python dependencies
       run: |
@@ -59,6 +64,7 @@ jobs:
         python run_tests.py --fast
       env:
         PYTHONPATH: ${{ github.workspace }}
+        DISPLAY: ":99"
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -83,7 +89,9 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
+        sudo apt-get install -y libgl1-mesa-dev libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libxrandr2 libxss1 libxcursor1 libxcomposite1 libasound2 libxi6 libxtst6 xvfb
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
