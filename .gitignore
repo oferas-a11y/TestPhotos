@@ -1,17 +1,70 @@
-﻿# Windows
-Thumbs.db
-Desktop.ini
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Image editors / previews
-*.aux
-*.tmp
-*.cache
+# Virtual environments
+venv/
+env/
+ENV/
 
-# VSCode
+# IDE
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# OS cruft
+# OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# Git LFS will handle big media; still ignore raw caches
-*.lrprev
+# Model files (large)
+*.pt
+*.pth
+*.onnx
+*.pb
+
+# Results and outputs (keep examples, ignore temporary)
+results/temp_*
+results/test_*
+
+# Visualizations (keep examples, ignore generated)
+detection_visualizations/
+semantic_visualizations/
+clustering_visualizations/
+opencv_visualizations/
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Test coverage
+htmlcov/
+.coverage
+.pytest_cache/

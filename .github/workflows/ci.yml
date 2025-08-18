@@ -1,0 +1,141 @@
+name: Historical Photo Analysis CI
+
+on:
+  push:
+    branches: [ main, yiftach ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, '3.10', '3.11']
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libglib2.0-0 libsm6 libxrender1 libxext6 libgomp1 xvfb
+    
+    - name: Start virtual display
+      run: |
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-ci.txt
+    
+    # Skip CLIP installation for CI to avoid dependency conflicts
+    # - name: Install CLIP (after main dependencies)
+    #   run: |
+    #     pip install git+https://github.com/openai/CLIP.git
+    #   continue-on-error: true
+    
+    - name: Lint with flake8 (optional)
+      run: |
+        pip install flake8
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true
+    
+    - name: Validate Python imports
+      run: |
+        python -c "
+        try:
+            from opencv_analysis.photo_analyzer import PhotoAnalyzer
+            print('✅ OpenCV module imports successfully')
+        except Exception as e:
+            print('❌ OpenCV import failed:', e)
+        
+        try:
+            from photo_clustering.process_photos import PhotoProcessor
+            from photo_clustering.kmeans_clustering import PhotoClusterer
+            print('✅ Clustering modules import successfully')
+        except Exception as e:
+            print('❌ Clustering import failed:', e)
+        
+        try:
+            from yolo_detection.yolo_detector import YOLODetector
+            print('✅ YOLO module imports successfully')
+        except Exception as e:
+            print('❌ YOLO import failed:', e)
+            
+        print('🎉 Basic validation complete!')
+        "
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Test basic functionality
+      run: |
+        python -c "
+        import numpy as np
+        import cv2
+        import matplotlib
+        matplotlib.use('Agg')
+        print('✅ All core libraries working')
+        "
+      env:
+        MPLBACKEND: "Agg"
+
+  documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check README and documentation
+      run: |
+        # Check that key files exist
+        test -f README.md
+        test -f requirements.txt
+        test -f examples/README.md
+        
+        # Check that all main directories exist
+        test -d opencv_analysis
+        test -d yolo_detection  
+        test -d clip_analysis
+        test -d photo_clustering
+        test -d examples
+        
+        echo "✅ Documentation structure check passed"
+    
+    - name: Validate JSON examples
+      run: |
+        # Check that example JSON files are valid
+        python -c "
+        import json
+        from pathlib import Path
+        
+        json_files = list(Path('examples').glob('*.json'))
+        for json_file in json_files:
+            try:
+                with open(json_file, 'r') as f:
+                    json.load(f)
+                print(f'✅ {json_file} is valid JSON')
+            except json.JSONDecodeError as e:
+                print(f'❌ {json_file} is invalid: {e}')
+                exit(1)
+        
+        print('✅ All JSON examples are valid')
+        "

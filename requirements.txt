@@ -1,0 +1,19 @@
+# Core dependencies
+numpy>=1.21.0
+opencv-python>=4.5.0
+scikit-learn>=1.0.0
+matplotlib>=3.5.0
+Pillow>=8.0.0
+
+# YOLO object detection
+ultralytics>=8.0.0
+
+# CLIP semantic analysis (install separately to avoid conflicts)
+# torch and torchvision will be installed via ultralytics dependencies
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Additional packages for extended functionality
+# opencv-contrib-python>=4.5.0  # Alternative to opencv-python with extra modules
