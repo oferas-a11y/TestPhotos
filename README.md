@@ -59,10 +59,10 @@ pip install -r requirements.txt
 pip install git+https://github.com/openai/CLIP.git
 ```
 
-3. **Run tests** (optional but recommended)
+3. **Verify installation** (optional)
 ```bash
-cd tests
-python run_tests.py
+# Test that modules import correctly
+python -c "from opencv_analysis.photo_analyzer import PhotoAnalyzer; print('✅ Ready to go!')"
 ```
 
 ### Basic Usage
@@ -168,28 +168,10 @@ The `examples/` directory contains sample outputs:
 
 ## 🧪 Testing
 
-Comprehensive test suite with 95%+ coverage:
-
-```bash
-# Run all tests
-cd tests
-python run_tests.py
-
-# Run specific test categories
-python run_tests.py --opencv      # OpenCV tests only
-python run_tests.py --yolo        # YOLO tests only  
-python run_tests.py --clip        # CLIP tests only
-python run_tests.py --clustering  # Clustering tests only
-python run_tests.py --integration # Integration tests only
-python run_tests.py --fast        # Skip slow tests
-```
-
-**Test Coverage:**
-- Unit tests for all components
-- Integration tests for complete workflows
-- Mock tests for external dependencies (YOLO/CLIP models)
-- Error handling and edge case testing
-- Performance and memory usage tests
+Unit tests will be added in future versions. Currently the repository includes:
+- Working example scripts for all analysis tools
+- Sample results and clustering data
+- Complete documentation and usage examples
 
 ## 🎛️ Interactive Modes
 
@@ -291,9 +273,9 @@ pip install git+https://github.com/openai/CLIP.git
 ## 🤝 Contributing
 
 ### Development Setup
-1. Install dev dependencies: `pip install -r requirements.txt`
-2. Run tests: `cd tests && python run_tests.py`
-3. Check code coverage: Open `htmlcov/index.html`
+1. Install dependencies: `pip install -r requirements.txt`
+2. Test functionality: `python -c "from opencv_analysis.photo_analyzer import PhotoAnalyzer; print('Ready!')"`
+3. Contribute improvements and add unit tests
 
 ### Adding New Features
 - Follow existing code structure

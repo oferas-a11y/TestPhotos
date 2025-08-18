@@ -7,64 +7,34 @@
   },
   "photos": [
     {
-      "filename": "Figure 59.jpg",
+      "filename": "013 Buch 26.jpg",
       "total_detections": 1,
       "category_counts": {
-        "church or cathedral": 1
+        "wartime scene": 1
       },
       "priority_score": 0.0,
       "detections": [
         {
-          "category": "church or cathedral",
-          "confidence": 0.3616485893726349,
-          "category_id": 17,
+          "category": "wartime scene",
+          "confidence": 0.32232341170310974,
+          "category_id": 46,
           "historical_context": "Historical relevance"
         }
       ],
       "top_categories": [
-        "church or cathedral"
+        "wartime scene"
       ]
     },
     {
-      "filename": "Figure 26a.jpg",
-      "total_detections": 1,
-      "category_counts": {
-        "group of people": 1
-      },
+      "filename": "018.jpg",
+      "total_detections": 0,
+      "category_counts": {},
       "priority_score": 0.0,
-      "detections": [
-        {
-          "category": "group of people",
-          "confidence": 0.6682491898536682,
-          "category_id": 7,
-          "historical_context": "Historical relevance"
-        }
-      ],
-      "top_categories": [
-        "group of people"
-      ]
+      "detections": [],
+      "top_categories": []
     },
     {
-      "filename": "\u05d2\u05e8\u05d8\u05e8\u05d5\u05d3+ \u05d0\u05d5\u05d8\u05d5 \u05e8\u05d3\u05d4 1935-6 001.jpg",
-      "total_detections": 1,
-      "category_counts": {
-        "wedding photograph": 1
-      },
-      "priority_score": 0.0,
-      "detections": [
-        {
-          "category": "wedding photograph",
-          "confidence": 0.6917311549186707,
-          "category_id": 6,
-          "historical_context": "Historical relevance"
-        }
-      ],
-      "top_categories": [
-        "wedding photograph"
-      ]
-    },
-    {
-      "filename": "Figure 67.jpg",
+      "filename": "Figure 69.jpg",
       "total_detections": 1,
       "category_counts": {
         "farming equipment": 1
@@ -73,7 +43,7 @@
       "detections": [
         {
           "category": "farming equipment",
-          "confidence": 0.5673567652702332,
+          "confidence": 0.6985946893692017,
           "category_id": 38,
           "historical_context": "Historical relevance"
         }
@@ -83,22 +53,30 @@
       ]
     },
     {
-      "filename": "Figure 66.jpg",
+      "filename": "002.jpg",
+      "total_detections": 0,
+      "category_counts": {},
+      "priority_score": 0.0,
+      "detections": [],
+      "top_categories": []
+    },
+    {
+      "filename": "005.jpg",
       "total_detections": 1,
       "category_counts": {
-        "children playing": 1
+        "horses working": 1
       },
       "priority_score": 0.0,
       "detections": [
         {
-          "category": "children playing",
-          "confidence": 0.3168483078479767,
-          "category_id": 4,
+          "category": "horses working",
+          "confidence": 0.567177951335907,
+          "category_id": 34,
           "historical_context": "Historical relevance"
         }
       ],
       "top_categories": [
-        "children playing"
+        "horses working"
       ]
     }
   ]
