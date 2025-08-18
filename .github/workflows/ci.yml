@@ -42,12 +42,12 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-cov pytest-mock
-        pip install -r requirements.txt
+        pip install -r requirements-ci.txt
     
-    - name: Install PyTorch (CPU only for CI)
+    - name: Install CLIP (after main dependencies)
       run: |
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        pip install git+https://github.com/openai/CLIP.git
+      continue-on-error: true
     
     - name: Lint with flake8 (optional)
       run: |
@@ -94,8 +94,8 @@ jobs:
         export DISPLAY=:99
         Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        pip install -r requirements-ci.txt
+        pip install git+https://github.com/openai/CLIP.git || echo "CLIP install failed, tests will skip CLIP functionality"
     
     - name: Run integration tests
       run: |

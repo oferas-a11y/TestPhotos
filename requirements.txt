@@ -8,10 +8,8 @@ Pillow>=8.0.0
 # YOLO object detection
 ultralytics>=8.0.0
 
-# CLIP semantic analysis
-torch>=1.9.0
-torchvision>=0.10.0
-clip-by-openai>=1.0
+# CLIP semantic analysis (install separately to avoid conflicts)
+# torch and torchvision will be installed via ultralytics dependencies
 
 # Testing
 pytest>=7.0.0
