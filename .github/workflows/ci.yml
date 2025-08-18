@@ -32,7 +32,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-dev libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libxrandr2 libxss1 libxcursor1 libxcomposite1 libasound2 libxi6 libxtst6 xvfb
+        sudo apt-get install -y libglib2.0-0 libsm6 libxrender1 libxext6 libgomp1 xvfb
     
     - name: Start virtual display
       run: |
@@ -65,6 +65,7 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}
         DISPLAY: ":99"
+        MPLBACKEND: "Agg"
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -89,7 +90,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-dev libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libxrandr2 libxss1 libxcursor1 libxcomposite1 libasound2 libxi6 libxtst6 xvfb
+        sudo apt-get install -y libglib2.0-0 libsm6 libxrender1 libxext6 libgomp1 xvfb
         export DISPLAY=:99
         Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
         python -m pip install --upgrade pip
@@ -102,6 +103,8 @@ jobs:
         python -m pytest test_integration.py -v --tb=short
       env:
         PYTHONPATH: ${{ github.workspace }}
+        DISPLAY: ":99"
+        MPLBACKEND: "Agg"
     
     - name: Test OpenCV analysis workflow
       run: |
@@ -127,6 +130,8 @@ jobs:
             assert 'brightness' in result
             print('✅ OpenCV analysis workflow test passed')
         "
+      env:
+        MPLBACKEND: "Agg"
     
     - name: Test clustering workflow  
       run: |
@@ -158,6 +163,8 @@ jobs:
             assert 'labels' in results
             print('✅ Clustering workflow test passed')
         "
+      env:
+        MPLBACKEND: "Agg"
 
   documentation:
     runs-on: ubuntu-latest
