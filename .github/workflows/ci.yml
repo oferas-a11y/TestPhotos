@@ -1,0 +1,196 @@
+name: Historical Photo Analysis CI
+
+on:
+  push:
+    branches: [ main, yiftach ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, '3.10', '3.11']
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-mock
+        pip install -r requirements.txt
+    
+    - name: Install PyTorch (CPU only for CI)
+      run: |
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+    
+    - name: Lint with flake8 (optional)
+      run: |
+        pip install flake8
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true
+    
+    - name: Run tests with pytest
+      run: |
+        cd tests
+        python run_tests.py --fast
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+    
+    - name: Run integration tests
+      run: |
+        cd tests
+        python -m pytest test_integration.py -v --tb=short
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Test OpenCV analysis workflow
+      run: |
+        cd opencv_analysis
+        python -c "
+        from photo_analyzer import PhotoAnalyzer
+        import tempfile
+        import cv2
+        import numpy as np
+        from pathlib import Path
+        
+        # Create test image
+        with tempfile.TemporaryDirectory() as tmpdir:
+            img = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+            img_path = Path(tmpdir) / 'test.jpg'
+            cv2.imwrite(str(img_path), img)
+            
+            # Test analyzer
+            analyzer = PhotoAnalyzer()
+            result = analyzer.analyze_image(str(img_path))
+            
+            assert result is not None
+            assert 'brightness' in result
+            print('✅ OpenCV analysis workflow test passed')
+        "
+    
+    - name: Test clustering workflow  
+      run: |
+        cd photo_clustering
+        python -c "
+        from process_photos import PhotoProcessor
+        from kmeans_clustering import PhotoClusterer
+        import tempfile
+        import cv2
+        import numpy as np
+        from pathlib import Path
+        
+        # Create test images
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for i in range(5):
+                img = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+                img_path = Path(tmpdir) / f'test_{i}.jpg'
+                cv2.imwrite(str(img_path), img)
+            
+            # Test workflow
+            processor = PhotoProcessor()
+            clusterer = PhotoClusterer()
+            
+            paths, features = processor.process_directory(tmpdir)
+            results = clusterer.perform_clustering(paths, features, n_clusters=2)
+            
+            assert len(paths) == 5
+            assert len(features) == 5
+            assert 'labels' in results
+            print('✅ Clustering workflow test passed')
+        "
+
+  documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check README and documentation
+      run: |
+        # Check that key files exist
+        test -f README.md
+        test -f requirements.txt
+        test -f examples/README.md
+        test -f tests/run_tests.py
+        
+        # Check that all main directories exist
+        test -d opencv_analysis
+        test -d yolo_detection  
+        test -d clip_analysis
+        test -d photo_clustering
+        test -d examples
+        test -d tests
+        
+        echo "✅ Documentation structure check passed"
+    
+    - name: Validate JSON examples
+      run: |
+        # Check that example JSON files are valid
+        python -c "
+        import json
+        from pathlib import Path
+        
+        json_files = list(Path('examples').glob('*.json'))
+        for json_file in json_files:
+            try:
+                with open(json_file, 'r') as f:
+                    json.load(f)
+                print(f'✅ {json_file} is valid JSON')
+            except json.JSONDecodeError as e:
+                print(f'❌ {json_file} is invalid: {e}')
+                exit(1)
+        
+        print('✅ All JSON examples are valid')
+        "
