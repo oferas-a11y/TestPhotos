@@ -132,6 +132,7 @@ def run_specific_tests():
     parser.add_argument('--clip', action='store_true', help='Run CLIP tests only')
     parser.add_argument('--integration', action='store_true', help='Run integration tests only')
     parser.add_argument('--fast', action='store_true', help='Skip slow tests')
+    parser.add_argument('--skip-clip', action='store_true', help='Skip CLIP tests (for CI)')
     
     args = parser.parse_args()
     
@@ -152,7 +153,11 @@ def run_specific_tests():
     
     if not test_files:
         print("No specific test category selected. Running all tests.")
-        return main()
+        if args.skip_clip:
+            print("Skipping CLIP tests...")
+            test_files = ['test_opencv_analysis.py', 'test_photo_clustering.py', 'test_yolo_detection.py', 'test_integration.py']
+        else:
+            return main()
     
     test_args = []
     for test_file in test_files:
@@ -162,6 +167,9 @@ def run_specific_tests():
     
     if args.fast:
         test_args.extend(['-m', 'not slow'])
+    
+    if args.skip_clip:
+        test_args.extend(['-k', 'not clip'])
     
     print(f"Running specific tests: {', '.join(test_files)}")
     exit_code = pytest.main(test_args)

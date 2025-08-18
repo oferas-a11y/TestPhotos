@@ -7,26 +7,45 @@
   },
   "photos": [
     {
-      "filename": "Figure 34.jpg",
+      "filename": "Figure 59.jpg",
       "total_detections": 1,
       "category_counts": {
-        "wartime scene": 1
+        "church or cathedral": 1
       },
       "priority_score": 0.0,
       "detections": [
         {
-          "category": "wartime scene",
-          "confidence": 0.3533253073692322,
-          "category_id": 46,
+          "category": "church or cathedral",
+          "confidence": 0.3616485893726349,
+          "category_id": 17,
           "historical_context": "Historical relevance"
         }
       ],
       "top_categories": [
-        "wartime scene"
+        "church or cathedral"
       ]
     },
     {
-      "filename": "Figure 22.jpg",
+      "filename": "Figure 26a.jpg",
+      "total_detections": 1,
+      "category_counts": {
+        "group of people": 1
+      },
+      "priority_score": 0.0,
+      "detections": [
+        {
+          "category": "group of people",
+          "confidence": 0.6682491898536682,
+          "category_id": 7,
+          "historical_context": "Historical relevance"
+        }
+      ],
+      "top_categories": [
+        "group of people"
+      ]
+    },
+    {
+      "filename": "\u05d2\u05e8\u05d8\u05e8\u05d5\u05d3+ \u05d0\u05d5\u05d8\u05d5 \u05e8\u05d3\u05d4 1935-6 001.jpg",
       "total_detections": 1,
       "category_counts": {
         "wedding photograph": 1
@@ -35,7 +54,7 @@
       "detections": [
         {
           "category": "wedding photograph",
-          "confidence": 0.6692196726799011,
+          "confidence": 0.6917311549186707,
           "category_id": 6,
           "historical_context": "Historical relevance"
         }
@@ -45,49 +64,41 @@
       ]
     },
     {
-      "filename": "Figure 41.jpg",
-      "total_detections": 0,
-      "category_counts": {},
-      "priority_score": 0.0,
-      "detections": [],
-      "top_categories": []
-    },
-    {
-      "filename": "Figure 2.jpg",
+      "filename": "Figure 67.jpg",
       "total_detections": 1,
       "category_counts": {
-        "wedding photograph": 1
+        "farming equipment": 1
       },
       "priority_score": 0.0,
       "detections": [
         {
-          "category": "wedding photograph",
-          "confidence": 0.7718914151191711,
-          "category_id": 6,
+          "category": "farming equipment",
+          "confidence": 0.5673567652702332,
+          "category_id": 38,
           "historical_context": "Historical relevance"
         }
       ],
       "top_categories": [
-        "wedding photograph"
+        "farming equipment"
       ]
     },
     {
-      "filename": "img20250128_13265552.jpg",
+      "filename": "Figure 66.jpg",
       "total_detections": 1,
       "category_counts": {
-        "a woman in period dress": 1
+        "children playing": 1
       },
       "priority_score": 0.0,
       "detections": [
         {
-          "category": "a woman in period dress",
-          "confidence": 0.7950016856193542,
-          "category_id": 2,
+          "category": "children playing",
+          "confidence": 0.3168483078479767,
+          "category_id": 4,
           "historical_context": "Historical relevance"
         }
       ],
       "top_categories": [
-        "a woman in period dress"
+        "children playing"
       ]
     }
   ]

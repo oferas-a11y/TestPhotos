@@ -44,10 +44,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-ci.txt
     
-    - name: Install CLIP (after main dependencies)
-      run: |
-        pip install git+https://github.com/openai/CLIP.git
-      continue-on-error: true
+    # Skip CLIP installation for CI to avoid dependency conflicts
+    # - name: Install CLIP (after main dependencies)
+    #   run: |
+    #     pip install git+https://github.com/openai/CLIP.git
+    #   continue-on-error: true
     
     - name: Lint with flake8 (optional)
       run: |
@@ -58,10 +59,10 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       continue-on-error: true
     
-    - name: Run tests with pytest
+    - name: Run tests with pytest (excluding CLIP)
       run: |
         cd tests
-        python run_tests.py --fast
+        python run_tests.py --fast --skip-clip
       env:
         PYTHONPATH: ${{ github.workspace }}
         DISPLAY: ":99"
@@ -95,9 +96,9 @@ jobs:
         Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
         python -m pip install --upgrade pip
         pip install -r requirements-ci.txt
-        pip install git+https://github.com/openai/CLIP.git || echo "CLIP install failed, tests will skip CLIP functionality"
+# Skip CLIP for CI
     
-    - name: Run integration tests
+    - name: Run integration tests (excluding CLIP)
       run: |
         cd tests
         python -m pytest test_integration.py -v --tb=short

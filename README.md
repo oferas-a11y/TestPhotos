@@ -54,6 +54,9 @@ cd TestPhotos
 2. **Install dependencies**
 ```bash
 pip install -r requirements.txt
+
+# Install CLIP separately (optional, may have version conflicts)
+pip install git+https://github.com/openai/CLIP.git
 ```
 
 3. **Run tests** (optional but recommended)
