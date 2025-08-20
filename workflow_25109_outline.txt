@@ -1,0 +1,120 @@
+Start at: T0
+T0: [single] Do you want to explore this image?
+  - Yes -> T1
+  - No (OR this document is not a photograph) -> END
+T1: [single] Does the image include explicit violence, dead bodies, nudity, or other elements that are not suited for viewers under the age of 18?
+  - Yes -> T2
+  - No -> T2
+T2: [text] Please write a few sentences on the image: What do we see? What is the situation (if you can tell)? What details are worth mentioning?
+  next -> T3
+T3: [single] Are there any people in the photograph?
+  - Yes -> T4
+  - No -> T17
+T4: [multiple] Please try to estimate the age of the people in the photograph. 
+
+If there are people of different ages, please mark all the relevant options:
+  next -> T5
+T5: [multiple] What is the gender of the people in the photograph?
+
+If there is more than one person, mark all the relevant options.
+  next -> T6
+T6: [single] Can you tell if the people in the photograph are Jewish? 
+
+Often, though not always, Jewish people will be marked with a badge, an armband, or they are dressed in a traditional Jewish attire. Sometimes there will be Jewish artefacts next to them (Menorah, Hebrew books, Jewish tombstones, etc.).
+  - Apparently, everyone in this photograph is Jewish -> T13
+  - There are Jewish and non-Jewish people in the photo -> T8
+  - There are only non-Jewish people in the photo -> T7
+  - I cannot tell whether they are Jewish or not -> T8
+T7: [single] This question refers to the people who are not Jewish in the photograph, please indicate if:
+  - He/She/They wear uniform  -> T9
+  - He/She/They do not wear uniform -> T11
+T8: [single] This question refers to the people who are not Jewish in the photograph. If you are not sure whether they are Jewish or not, refer to them as "non-Jewish" for this question:
+  - He/She/They wear uniform  -> T10
+  - He/She/They do not wear uniform -> T12
+T9: [multiple] Can you tell if the people in the picture are any of the following (if there is more than one person, mark all the relevant answers):
+  next -> T14
+T10: [multiple] This question refers to the non-Jewish people in the picture. Can you tell if the people in the picture are any of the following (if there is more than one person, mark all the relevant answers):
+  next -> T13
+T11: [multiple] Can you tell if the people in the picture are any of the following categories (if there is more than one person, mark all the relevant answers):
+  next -> T14
+T12: [multiple] This question refers to the non-Jewish people in the picture. Can you tell if the people in the picture are any of the following (if there is more than one person, mark all the relevant answers):
+  next -> T13
+T13: [multiple] This question refers to the Jews in the photo. Are there any visual sign that designate them as Jews? (if there is more than one person, mark all the relevant answers).
+  next -> T14
+T14: [single] Does the image depict (explicitly or implicitly) violence or humiliation?
+  - Yes, explicit violence -> T15
+  - Yes, it depicts humiliation (it is clear that the photographed are forced to do something or to stand at a certain place against their own free will) -> T15
+  - Implicitly, it shows Jews standing next to German (guards, soldiers, Nazi officials, etc.) -> T15
+  - Possibly. It seems that the photographed are threatened by something or someone outside of the frame (anxious gaze, hands in the air, etc.) -> T15
+  - There is no sign of violence, abuse or humiliation -> T15
+  - It shows the victims of violence and abuse, after the event took place (dead bodies, starved, beaten people, etc.) -> T15
+T15: [multiple] What kind of clothes do the people in the picture wear? (if there is more than one person, please mark all the relevant options).
+  next -> T16
+T16: [multiple] In terms of socio-economic status, how would you describe the people in the picture? (if there is more than one person, please mark all the relevant options).
+  next -> T17
+T17: [single] Where was the photograph taken:
+  - Indoor -> T18
+  - Outdoor -> T21
+T18: [single] How would you describe the settings of the photograph?
+  - Private home -> T20
+  - A studio -> T20
+  - A public place of cultural events (theater, concert hall, civic center, club, etc.) -> T19
+  - Inside an office or other white-collar workplace -> T20
+  - In a factory, workshop, or other blue collar workplace -> T20
+  - Inside a Jewish religious site (synagogue, Mikveh, etc.) -> T20
+  - Inside a church -> T20
+  - Other -> T20
+T19: [multiple] Please indicate the depicted space (if there is more than one person, please mark all the relevant options).
+  next -> T20
+T20: [multiple] Does the setting include a clear or tacit indication of the identity of its inhabitants? (if there is more than one person, please mark all the relevant options).
+  next -> T26
+T21: [single] How would you describe the settings of the picture?
+  - Urban environment -> T22
+  - A small town or a village -> T23
+  - Natural landscape -> T24
+  - I am not sure if it is in a city, a small town, or a village -> T22
+T22: [multiple] Please mark the options that match the image. (if there is more than one, please mark all the relevant options).
+  next -> T25
+T23: [multiple] Please mark the options that match the image. (if there is more than one, please mark all the relevant options).
+  next -> T25
+T24: [multiple] Please mark the options that match the image. (if there is more than one, please mark all the relevant options).
+  next -> T25
+T25: [text] If you know where this photograph was taken, the name of the city, village or region, please write it here.
+  next -> T26
+T26: [multiple] Please indicate if any of the following details are also displayed in the photograph (choose all the relevant answers).
+  next -> T27
+T27: [single] Does the photo include text (signs, street names, business names, etc.)?
+  - Yes -> T28
+  - No -> T29
+T28: [text] If you can, please transcribe the text here.
+  next -> T29
+T29: [single] How would you describe the genre or style of the photograph (if you are not sure, feel free to guess).
+  - Portrait -> T31
+  - Snap-shot: was taken clandestinely or in a haste (holding the camera at the waste, or in a hidden place). The subjects are probably not aware of being photographed -> T31
+  - A "touristic" photograph: while on vacation, a hike, or during the military service--probably to be viewed in private (can also document violence, in ghettos, for instance) -> T31
+  - A German propaganda photography: designated to display the achievements or the ideological convictions of Nazism -> T31
+  - A photograph aims to show Jewish *resistance* (can also be cultural or spiritual resistance, for instance by maintaining cultural or religious events, community-supportive institutions, continuity of routines under crisis, etc.) -> T31
+  - Private photography: of the private environment and to be viewed in private (among family or friends, not in public) -> T31
+  - Journalistic-documentary photography: to document and report on the photographed reality -> T31
+  - Other or I don't know -> T31
+T30: [single] How would you describe the historical context (if you are not sure, feel free to guess).
+  - Transport (expulsion) of Jews or waiting to be transported (a group of people, normally with suitcases, possibly next to tracks or trains) -> T34
+  - Daily life under Nazi rule (in Germany) or occupation (elsewhere) -- not in the ghetto -> T34
+  - Life and death in the ghetto (including the destruction of the ghetto) -> T34
+  - Concentration camp or prisoner-of-war camp -> T34
+  - Slave labor (normally in a ghetto or a camp) -> T34
+  - Jewish life in Europe before the war (or in Germany before 1933). -> T34
+  - Partisans or other militia forces that fought against the German occupation -> T34
+  - The liberation of a camp -> T34
+  - Displaced Persons camps after the war -> T34
+  - Other, or I do not know -> T34
+T31: [single] How would you describe the historical context (if you are not sure, feel free to guess). Please note that a star-shaped badge ("Yellow Badge") might indicate that it was taken during the war.
+  - Life and death in the ghetto (including the destruction of the ghetto) -> T32
+  - Jewish life before the beginning of the war -> T33
+  - Other -> T30
+T32: [multiple] What do we see in the picture. Please mark all the relevant options from the following categories.
+  next -> T34
+T33: [multiple] What do we see in the picture. Please mark all the relevant options from the following categories.
+  next -> T34
+T34: [text] Are there any other interesting or noteworthy details in the photo?
+  next -> END

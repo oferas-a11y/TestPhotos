@@ -1,0 +1,938 @@
+{
+  "active": false,
+  "configuration": {
+    "pan_and_zoom": true,
+    "stats_hidden": false,
+    "persist_annotations": false,
+    "stats_completeness_type": "classification"
+  },
+  "display_name": "January 2024",
+  "first_task": "T0",
+  "mobile_friendly": false,
+  "primary_language": "en",
+  "retirement": {
+    "options": {
+      "count": 1
+    },
+    "criteria": "classification_count"
+  },
+  "tasks": {
+    "T0": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T1",
+          "label": "Yes"
+        },
+        {
+          "label": "No (OR this document is not a photograph)"
+        }
+      ],
+      "question": "Do you want to explore this image?",
+      "required": true
+    },
+    "T1": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T2",
+          "label": "Yes"
+        },
+        {
+          "next": "T2",
+          "label": "No"
+        }
+      ],
+      "question": "Does the image include explicit violence, dead bodies, nudity, or other elements that are not suited for viewers under the age of 18?",
+      "required": true
+    },
+    "T2": {
+      "help": "",
+      "next": "T3",
+      "type": "text",
+      "required": true,
+      "instruction": "Please write a few sentences on the image: What do we see? What is the situation (if you can tell)? What details are worth mentioning?\n"
+    },
+    "T3": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T4",
+          "label": "Yes"
+        },
+        {
+          "next": "T17",
+          "label": "No"
+        }
+      ],
+      "question": "Are there any people in the photograph?",
+      "required": true
+    },
+    "T4": {
+      "help": "",
+      "next": "T5",
+      "type": "multiple",
+      "answers": [
+        {
+          "next": "T5",
+          "label": "Babies and Toddlers (0-4 years)"
+        },
+        {
+          "next": "T5",
+          "label": "Children and Teenagers (younger than 20)"
+        },
+        {
+          "next": "T5",
+          "label": "Adults, approximately between the age of 20 and 45"
+        },
+        {
+          "next": "T5",
+          "label": "Middle age (45 to 65)"
+        },
+        {
+          "next": "T5",
+          "label": "Elderly (older than 65)"
+        }
+      ],
+      "question": "Please try to estimate the age of the people in the photograph. \n\nIf there are people of different ages, please mark all the relevant options:",
+      "required": true
+    },
+    "T5": {
+      "help": "",
+      "next": "T6",
+      "type": "multiple",
+      "answers": [
+        {
+          "next": "T6",
+          "label": "Female"
+        },
+        {
+          "next": "T6",
+          "label": "Male"
+        },
+        {
+          "next": "T6",
+          "label": "I am not sure"
+        }
+      ],
+      "question": "What is the gender of the people in the photograph?\n\nIf there is more than one person, mark all the relevant options.",
+      "required": true
+    },
+    "T6": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T13",
+          "label": "Apparently, everyone in this photograph is Jewish"
+        },
+        {
+          "next": "T8",
+          "label": "There are Jewish and non-Jewish people in the photo"
+        },
+        {
+          "next": "T7",
+          "label": "There are only non-Jewish people in the photo"
+        },
+        {
+          "next": "T8",
+          "label": "I cannot tell whether they are Jewish or not"
+        }
+      ],
+      "question": "Can you tell if the people in the photograph are Jewish? \n\nOften, though not always, Jewish people will be marked with a badge, an armband, or they are dressed in a traditional Jewish attire. Sometimes there will be Jewish artefacts next to them (Menorah, Hebrew books, Jewish tombstones, etc.).",
+      "required": true
+    },
+    "T7": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T9",
+          "label": "He/She/They wear uniform "
+        },
+        {
+          "next": "T11",
+          "label": "He/She/They do not wear uniform"
+        }
+      ],
+      "question": "This question refers to the people who are not Jewish in the photograph, please indicate if:",
+      "required": true
+    },
+    "T8": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T10",
+          "label": "He/She/They wear uniform "
+        },
+        {
+          "next": "T12",
+          "label": "He/She/They do not wear uniform"
+        }
+      ],
+      "question": "This question refers to the people who are not Jewish in the photograph. If you are not sure whether they are Jewish or not, refer to them as \"non-Jewish\" for this question:",
+      "required": true
+    },
+    "T9": {
+      "help": "",
+      "next": "T14",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "Germans (soldiers, guards, SS or SA men, etc.)"
+        },
+        {
+          "label": "Non-German military of police persons who collaborated with Nazi occupation forces"
+        },
+        {
+          "label": "Soldiers of the Allies forces (American, British, Soviet, etc.)"
+        },
+        {
+          "label": "Prisoners of war"
+        },
+        {
+          "label": "I cannot tell"
+        }
+      ],
+      "question": "Can you tell if the people in the picture are any of the following (if there is more than one person, mark all the relevant answers):",
+      "required": true
+    },
+    "T10": {
+      "help": "",
+      "next": "T13",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "Germans (soldiers, guards, SS or SA men, etc.)"
+        },
+        {
+          "label": "Non-German military of police persons who collaborated with Nazi occupation forces"
+        },
+        {
+          "label": "Soldiers of the Allies forces (American, British, Soviet, etc.)"
+        },
+        {
+          "label": "Prisoners of war"
+        },
+        {
+          "label": "I cannot tell"
+        }
+      ],
+      "question": "This question refers to the non-Jewish people in the picture. Can you tell if the people in the picture are any of the following (if there is more than one person, mark all the relevant answers):",
+      "required": true
+    },
+    "T11": {
+      "help": "",
+      "next": "T14",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "German civilians"
+        },
+        {
+          "label": "Nazi officials"
+        },
+        {
+          "label": "Non-German civilians"
+        },
+        {
+          "label": "Prisoners of war"
+        },
+        {
+          "label": "Non-Jewish victims of Nazism"
+        },
+        {
+          "label": "I cannot tell"
+        }
+      ],
+      "question": "Can you tell if the people in the picture are any of the following categories (if there is more than one person, mark all the relevant answers):",
+      "required": true
+    },
+    "T12": {
+      "help": "",
+      "next": "T13",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "German civilians"
+        },
+        {
+          "label": "Nazi officials"
+        },
+        {
+          "label": "Non-German civilians"
+        },
+        {
+          "label": "Prisoners of war"
+        },
+        {
+          "label": "Non-Jewish victims of Nazism"
+        },
+        {
+          "label": "I cannot tell"
+        }
+      ],
+      "question": "This question refers to the non-Jewish people in the picture. Can you tell if the people in the picture are any of the following (if there is more than one person, mark all the relevant answers):",
+      "required": true
+    },
+    "T13": {
+      "help": "",
+      "next": "T14",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "An armband (usually, but not always, with a Star of David on it)"
+        },
+        {
+          "label": "\"Yellow Badge\" (a star , Star of David, etc., on the chest)"
+        },
+        {
+          "label": "Other mark on the cloths (normally on the chest or the back)"
+        },
+        {
+          "label": "A hat with a Star of David on it (or any other \"Jewish\" mark)"
+        },
+        {
+          "label": "Religious clothing and accessories (Talith, Tefillin, Hasidic hat, Yarmulka, Tzitzit, etc.)  "
+        },
+        {
+          "label": "Other religious marks (beard, sidelocks, women wig, etc.)"
+        },
+        {
+          "label": "\"Jewish\" objects in the surroundings, such as Menorah, Siddur,   Jewish tombstones [no crosses], paintings with Jewish motifs, etc."
+        },
+        {
+          "label": "There are no explicit signs for the Jewish identity of the photographed"
+        }
+      ],
+      "question": "This question refers to the Jews in the photo. Are there any visual sign that designate them as Jews? (if there is more than one person, mark all the relevant answers).",
+      "required": true
+    },
+    "T14": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T15",
+          "label": "Yes, explicit violence"
+        },
+        {
+          "next": "T15",
+          "label": "Yes, it depicts humiliation (it is clear that the photographed are forced to do something or to stand at a certain place against their own free will)"
+        },
+        {
+          "next": "T15",
+          "label": "Implicitly, it shows Jews standing next to German (guards, soldiers, Nazi officials, etc.)"
+        },
+        {
+          "next": "T15",
+          "label": "Possibly. It seems that the photographed are threatened by something or someone outside of the frame (anxious gaze, hands in the air, etc.)"
+        },
+        {
+          "next": "T15",
+          "label": "There is no sign of violence, abuse or humiliation"
+        },
+        {
+          "next": "T15",
+          "label": "It shows the victims of violence and abuse, after the event took place (dead bodies, starved, beaten people, etc.)"
+        }
+      ],
+      "question": "Does the image depict (explicitly or implicitly) violence or humiliation?",
+      "required": true
+    },
+    "T15": {
+      "help": "",
+      "next": "T16",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "Uniform"
+        },
+        {
+          "label": "Prisoners"
+        },
+        {
+          "label": "Traditional Jewish attire"
+        },
+        {
+          "label": "Modern European, for special occasions: suits, dresses, etc."
+        },
+        {
+          "label": "Modern European, daily (white or blue collar working cloths)"
+        },
+        {
+          "label": "Worn-out clothes or without any clothes"
+        },
+        {
+          "label": "Costume (for Purim celebration, stage act, or carnival)"
+        },
+        {
+          "label": "Other or I don't know"
+        }
+      ],
+      "question": "What kind of clothes do the people in the picture wear? (if there is more than one person, please mark all the relevant options).",
+      "required": true
+    },
+    "T16": {
+      "help": "",
+      "next": "T17",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "Wealthy"
+        },
+        {
+          "label": "Middle class"
+        },
+        {
+          "label": "Lower middle class"
+        },
+        {
+          "label": "Poor"
+        },
+        {
+          "label": "It's impossible to say"
+        }
+      ],
+      "question": "In terms of socio-economic status, how would you describe the people in the picture? (if there is more than one person, please mark all the relevant options).",
+      "required": true
+    },
+    "T17": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T18",
+          "label": "Indoor"
+        },
+        {
+          "next": "T21",
+          "label": "Outdoor"
+        }
+      ],
+      "question": "Where was the photograph taken:",
+      "required": true
+    },
+    "T18": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T20",
+          "label": "Private home"
+        },
+        {
+          "next": "T20",
+          "label": "A studio"
+        },
+        {
+          "next": "T19",
+          "label": "A public place of cultural events (theater, concert hall, civic center, club, etc.)"
+        },
+        {
+          "next": "T20",
+          "label": "Inside an office or other white-collar workplace"
+        },
+        {
+          "next": "T20",
+          "label": "In a factory, workshop, or other blue collar workplace"
+        },
+        {
+          "next": "T20",
+          "label": "Inside a Jewish religious site (synagogue, Mikveh, etc.)"
+        },
+        {
+          "next": "T20",
+          "label": "Inside a church"
+        },
+        {
+          "next": "T20",
+          "label": "Other"
+        }
+      ],
+      "question": "How would you describe the settings of the photograph?",
+      "required": true
+    },
+    "T19": {
+      "help": "",
+      "next": "T20",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "The stage"
+        },
+        {
+          "label": "The audience (or the viewers' seats, even if there are no people in the picture)"
+        },
+        {
+          "label": "Dressing rooms or other behind the scene settings"
+        },
+        {
+          "label": "Other or I don't know"
+        }
+      ],
+      "question": "Please indicate the depicted space (if there is more than one person, please mark all the relevant options).",
+      "required": true
+    },
+    "T20": {
+      "help": "",
+      "next": "T26",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "No, there is no indication of identity"
+        },
+        {
+          "label": "There are Christian religious symbols (a cross, religious paintings, etc.)"
+        },
+        {
+          "label": "National Socialist insignia (Swastika, SS insignia, pictures of Nazi leaders, etc.)"
+        },
+        {
+          "label": "Ideological non-Jewish symbols (national flags, identifiers of Communism, etc.)"
+        },
+        {
+          "label": "Jewish religious accessories and objects (Talith, Tefillin, Siddur, Menorah, Star of David, paintings with religious motifs, etc.)"
+        },
+        {
+          "label": "Jewish political identifies (books in Hebrew, paintings with Zionist symbols, political posters of Zionist fractions or of the Bund, etc.)"
+        }
+      ],
+      "question": "Does the setting include a clear or tacit indication of the identity of its inhabitants? (if there is more than one person, please mark all the relevant options).",
+      "required": true
+    },
+    "T21": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T22",
+          "label": "Urban environment"
+        },
+        {
+          "next": "T23",
+          "label": "A small town or a village"
+        },
+        {
+          "next": "T24",
+          "label": "Natural landscape"
+        },
+        {
+          "next": "T22",
+          "label": "I am not sure if it is in a city, a small town, or a village"
+        }
+      ],
+      "question": "How would you describe the settings of the picture?",
+      "required": true
+    },
+    "T22": {
+      "help": "",
+      "next": "T25",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "A street scene"
+        },
+        {
+          "label": "A market, commercial stands, or stores"
+        },
+        {
+          "label": "High building (more than three stories)"
+        },
+        {
+          "label": "Fences, walls, guarded gates or other posts of guards"
+        },
+        {
+          "label": "A large yard, or a park within the city"
+        },
+        {
+          "label": "Public building: prison, police station, city hall, soup kitchen, etc."
+        },
+        {
+          "label": "Synagogue or other Jewish religious place"
+        },
+        {
+          "label": "Workplaces: factories or workshops"
+        },
+        {
+          "label": "Destruction: destroyed building, fire (smoke, or burnt building), etc."
+        },
+        {
+          "label": "Cemetery"
+        },
+        {
+          "label": "Other"
+        }
+      ],
+      "question": "Please mark the options that match the image. (if there is more than one, please mark all the relevant options).",
+      "required": true
+    },
+    "T23": {
+      "help": "",
+      "next": "T25",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "A street in a village or a small town"
+        },
+        {
+          "label": "Focus on a specific private house"
+        },
+        {
+          "label": "Synagogue, cemetery or another Jewish religious place"
+        },
+        {
+          "label": "A marketplace"
+        },
+        {
+          "label": "Focus on a specific non-private building: the local Church, an old gate or city wall, the city hall, etc."
+        },
+        {
+          "label": "A village or a small town from afar, from outside of it"
+        },
+        {
+          "label": "Fences or other signs of imprisonment of people"
+        },
+        {
+          "label": "Cemetery"
+        },
+        {
+          "label": "Other or I don't know"
+        }
+      ],
+      "question": "Please mark the options that match the image. (if there is more than one, please mark all the relevant options).",
+      "required": true
+    },
+    "T24": {
+      "help": "",
+      "next": "T25",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "A forest"
+        },
+        {
+          "label": "A valley, a ravine or a manmade ditch"
+        },
+        {
+          "label": "River"
+        },
+        {
+          "label": "A mountain or mountains"
+        },
+        {
+          "label": "Fields"
+        },
+        {
+          "label": "A lake or the sea"
+        },
+        {
+          "label": "Railways"
+        },
+        {
+          "label": "A road"
+        },
+        {
+          "label": "Other"
+        }
+      ],
+      "question": "Please mark the options that match the image. (if there is more than one, please mark all the relevant options).",
+      "required": true
+    },
+    "T25": {
+      "help": "",
+      "next": "T26",
+      "type": "text",
+      "required": false,
+      "instruction": "If you know where this photograph was taken, the name of the city, village or region, please write it here."
+    },
+    "T26": {
+      "help": "",
+      "next": "T27",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "Animals"
+        },
+        {
+          "label": "Cars or tracks"
+        },
+        {
+          "label": "Trains"
+        },
+        {
+          "label": "Weapons"
+        },
+        {
+          "label": "A photograph (within the photograph)"
+        },
+        {
+          "label": "A camera"
+        },
+        {
+          "label": "Suitcases"
+        },
+        {
+          "label": "Wagons"
+        },
+        {
+          "label": "Baby stroller"
+        },
+        {
+          "label": "Other accessories: Jewels, handbags, wallets, hats, etc."
+        },
+        {
+          "label": "Other"
+        }
+      ],
+      "question": "Please indicate if any of the following details are also displayed in the photograph (choose all the relevant answers).",
+      "required": true
+    },
+    "T27": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T28",
+          "label": "Yes"
+        },
+        {
+          "next": "T29",
+          "label": "No"
+        }
+      ],
+      "question": "Does the photo include text (signs, street names, business names, etc.)?",
+      "required": true
+    },
+    "T28": {
+      "help": "",
+      "next": "T29",
+      "type": "text",
+      "required": false,
+      "instruction": "If you can, please transcribe the text here."
+    },
+    "T29": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T31",
+          "label": "Portrait"
+        },
+        {
+          "next": "T31",
+          "label": "Snap-shot: was taken clandestinely or in a haste (holding the camera at the waste, or in a hidden place). The subjects are probably not aware of being photographed"
+        },
+        {
+          "next": "T31",
+          "label": "A \"touristic\" photograph: while on vacation, a hike, or during the military service--probably to be viewed in private (can also document violence, in ghettos, for instance)"
+        },
+        {
+          "next": "T31",
+          "label": "A German propaganda photography: designated to display the achievements or the ideological convictions of Nazism"
+        },
+        {
+          "next": "T31",
+          "label": "A photograph aims to show Jewish *resistance* (can also be cultural or spiritual resistance, for instance by maintaining cultural or religious events, community-supportive institutions, continuity of routines under crisis, etc.)"
+        },
+        {
+          "next": "T31",
+          "label": "Private photography: of the private environment and to be viewed in private (among family or friends, not in public)"
+        },
+        {
+          "next": "T31",
+          "label": "Journalistic-documentary photography: to document and report on the photographed reality"
+        },
+        {
+          "next": "T31",
+          "label": "Other or I don't know"
+        }
+      ],
+      "question": "How would you describe the genre or style of the photograph (if you are not sure, feel free to guess).",
+      "required": true
+    },
+    "T30": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T34",
+          "label": "Transport (expulsion) of Jews or waiting to be transported (a group of people, normally with suitcases, possibly next to tracks or trains)"
+        },
+        {
+          "next": "T34",
+          "label": "Daily life under Nazi rule (in Germany) or occupation (elsewhere) -- not in the ghetto"
+        },
+        {
+          "next": "T34",
+          "label": "Life and death in the ghetto (including the destruction of the ghetto)"
+        },
+        {
+          "next": "T34",
+          "label": "Concentration camp or prisoner-of-war camp"
+        },
+        {
+          "next": "T34",
+          "label": "Slave labor (normally in a ghetto or a camp)"
+        },
+        {
+          "next": "T34",
+          "label": "Jewish life in Europe before the war (or in Germany before 1933)."
+        },
+        {
+          "next": "T34",
+          "label": "Partisans or other militia forces that fought against the German occupation"
+        },
+        {
+          "next": "T34",
+          "label": "The liberation of a camp"
+        },
+        {
+          "next": "T34",
+          "label": "Displaced Persons camps after the war"
+        },
+        {
+          "next": "T34",
+          "label": "Other, or I do not know"
+        }
+      ],
+      "question": "How would you describe the historical context (if you are not sure, feel free to guess).",
+      "required": true
+    },
+    "T31": {
+      "help": "",
+      "type": "single",
+      "answers": [
+        {
+          "next": "T32",
+          "label": "Life and death in the ghetto (including the destruction of the ghetto)"
+        },
+        {
+          "next": "T33",
+          "label": "Jewish life before the beginning of the war"
+        },
+        {
+          "next": "T30",
+          "label": "Other"
+        }
+      ],
+      "question": "How would you describe the historical context (if you are not sure, feel free to guess). Please note that a star-shaped badge (\"Yellow Badge\") might indicate that it was taken during the war.",
+      "required": true
+    },
+    "T32": {
+      "help": "",
+      "next": "T34",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "Commercial activity or a place of commerce"
+        },
+        {
+          "label": "Guards or soldiers"
+        },
+        {
+          "label": "Beggars"
+        },
+        {
+          "label": "Dying people, in the street"
+        },
+        {
+          "label": "Jewish leadership, Judenrat, Jewish police"
+        },
+        {
+          "label": "Youth movement or educational institutions"
+        },
+        {
+          "label": "Zionist or other political activity"
+        },
+        {
+          "label": "Cultural or religious activity"
+        },
+        {
+          "label": "Other"
+        }
+      ],
+      "question": "What do we see in the picture. Please mark all the relevant options from the following categories.",
+      "required": true
+    },
+    "T33": {
+      "help": "",
+      "next": "T34",
+      "type": "multiple",
+      "answers": [
+        {
+          "label": "Youth movement activity"
+        },
+        {
+          "label": "Hachshara Camps (agricultural training for Jewish youth)"
+        },
+        {
+          "label": "Schools or boarding schools"
+        },
+        {
+          "label": "Vacations or hikes"
+        },
+        {
+          "label": "Religious activity"
+        },
+        {
+          "label": "Daily routines, daily life"
+        },
+        {
+          "label": "Zionist or other political activity"
+        },
+        {
+          "label": "Sports"
+        },
+        {
+          "label": "Other, or I don't know"
+        }
+      ],
+      "question": "What do we see in the picture. Please mark all the relevant options from the following categories.",
+      "required": true
+    },
+    "T34": {
+      "help": "",
+      "type": "text",
+      "required": false,
+      "instruction": "Are there any other interesting or noteworthy details in the photo?"
+    }
+  },
+  "links": {
+    "project": "9825",
+    "subject_sets": [
+      "117910"
+    ],
+    "tutorial_subject": null,
+    "published_version": null,
+    "attached_images": {
+      "href": "/workflows/25109/attached_images",
+      "type": "attached_images",
+      "ids": []
+    },
+    "classifications_export": {
+      "href": "/workflows/25109/classifications_export",
+      "type": "classifications_exports"
+    }
+  },
+  "id": "25109",
+  "steps": [],
+  "classifications_count": 1966,
+  "subjects_count": 994,
+  "created_at": "2023-09-11T12:22:10.214Z",
+  "updated_at": "2025-01-06T09:07:46.596Z",
+  "finished_at": null,
+  "version": "369.678",
+  "content_language": "en",
+  "prioritized": false,
+  "grouped": false,
+  "pairwise": false,
+  "retired_set_member_subjects_count": 464,
+  "href": "/workflows/25109",
+  "public_gold_standard": false,
+  "completeness": 0.46680080482897385
+}
