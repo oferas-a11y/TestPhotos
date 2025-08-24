@@ -1,6 +1,52 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+*.log
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Environments
+.env
+.env.*
+.venv/
+venv/
+env/
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/
+*.code-workspace
+
+# Models and large weights (track with Git LFS if needed)
+opencv_analysis/models/colorization_release_v2.caffemodel
+yolo_detection/yolov8s.pt
+yolov8s.pt
+
+# Outputs (force-add specific files if you choose later)
+main_app_outputs/
+!main_app_outputs/.gitkeep
+!main_app_outputs/results/.gitkeep
+!main_app_outputs/data_search_dashord/.gitkeep
+!main_app_outputs/colorized/.gitkeep
+!main_app_outputs/data_search_dashord/embeddings_minilm_l6.npz
+!main_app_outputs/data_search_dashord/embeddings_meta.json
+
+# Node/npm (if any tooling is added later)
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
 *$py.class
 *.so
 .Python

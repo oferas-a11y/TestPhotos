@@ -1,0 +1,47 @@
+# Proposed removals (DO NOT DELETE YET). Final deletion only after your approval.
+# Goal: Keep only the main_app, minimal dependencies, weights, sample_photos, and outputs.
+
+/Users/yiftachashkenazi/TestPhotos/clip_analysis/                      # Old CLIP prototype; replaced by main_app/modules/clip_runner.py
+/Users/yiftachashkenazi/TestPhotos/detection_visualizations/           # Legacy YOLO viz outputs; not used by main_app
+/Users/yiftachashkenazi/TestPhotos/docs/                                # Project docs not referenced by main_app
+/Users/yiftachashkenazi/TestPhotos/examples/                            # Examples and clustering assets; not used by main_app
+/Users/yiftachashkenazi/TestPhotos/opencv_detection_visualizations/     # Legacy OpenCV viz; not used by main_app
+/Users/yiftachashkenazi/TestPhotos/photo_clustering/                    # Clustering utilities; not used by main_app
+/Users/yiftachashkenazi/TestPhotos/pipeline/                            # Old pipeline; replaced by main_app orchestrator
+/Users/yiftachashkenazi/TestPhotos/results/                              # Legacy colorized outputs; main_app writes to main_app_outputs/
+/Users/yiftachashkenazi/TestPhotos/sample_photos copy/                  # Duplicate of sample_photos
+/Users/yiftachashkenazi/TestPhotos/single_photo_result_colorized_Figure_22.json  # Legacy single run output
+
+# OpenCV analysis: keep only model weights required for colorization
+/Users/yiftachashkenazi/TestPhotos/opencv_analysis/colorize_one.py      # Not used by main_app (colorizer is embedded)
+/Users/yiftachashkenazi/TestPhotos/opencv_analysis/photo_analyzer.py    # Not used by main_app
+/Users/yiftachashkenazi/TestPhotos/opencv_analysis/README.md            # Not needed if we keep main_app/README.md
+/Users/yiftachashkenazi/TestPhotos/opencv_analysis/photo_analysis.json  # Legacy output
+/Users/yiftachashkenazi/TestPhotos/opencv_analysis/single_photo_opencv_colorized_Figure_22.json  # Legacy output
+
+# YOLO detection: keep yolo_detector.py and yolov8s.pt only (main_app defaults to v8s)
+/Users/yiftachashkenazi/TestPhotos/yolo_detection/random_5_photos_results.json   # Legacy output
+/Users/yiftachashkenazi/TestPhotos/yolo_detection/README.md             # Duplicative docs
+/Users/yiftachashkenazi/TestPhotos/yolo_detection/yolov8n.pt            # Extra weights (not used by main_app)
+/Users/yiftachashkenazi/TestPhotos/yolov8m.pt                           # Extra weights (not used by main_app)
+/Users/yiftachashkenazi/TestPhotos/yolov9c.pt                           # Extra weights (not used by main_app)
+/Users/yiftachashkenazi/TestPhotos/yolov10m.pt                          # Extra weights (not used by main_app)
+
+# main_app unused components
+/Users/yiftachashkenazi/TestPhotos/main_app/recognizers/symbols.py      # Symbols recognition was removed from the app
+/Users/yiftachashkenazi/TestPhotos/main_app/recognizers/                # Entire directory (if empty after removing symbols.py)
+/Users/yiftachashkenazi/TestPhotos/main_app/PROMPTS.md                  # Prompt bank for symbols, no longer in use
+
+# Optional cleanup (confirm if you want to keep Docker/dev files):
+/Users/yiftachashkenazi/TestPhotos/Dockerfile                           # Not required if you run locally without Docker
+/Users/yiftachashkenazi/TestPhotos/requirements-ci.txt                  # CI-only deps; main runtime uses requirements.txt
+
+# Items to KEEP (for clarity; do not delete):
+# - /Users/yiftachashkenazi/TestPhotos/main_app/ (entire app)
+# - /Users/yiftachashkenazi/TestPhotos/opencv_analysis/models/ (colorization weights)
+# - /Users/yiftachashkenazi/TestPhotos/yolo_detection/yolo_detector.py
+# - /Users/yiftachashkenazi/TestPhotos/yolo_detection/yolo_army.pt (if you obtain a trained model)
+# - /Users/yiftachashkenazi/TestPhotos/yolo_detection/yolov8s.pt (baseline weights)
+# - /Users/yiftachashkenazi/TestPhotos/sample_photos/ (input set)
+# - /Users/yiftachashkenazi/TestPhotos/main_app_outputs/ (app outputs)
+# - /Users/yiftachashkenazi/TestPhotos/requirements.txt, /Users/yiftachashkenazi/TestPhotos/README.md, and .env
