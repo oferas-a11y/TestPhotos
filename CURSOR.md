@@ -12,13 +12,13 @@ Help me set up TestPhotos, a historical photo analysis tool.
 
 1. Check if I have Python 3.8+ installed
 2. Install the required dependencies from requirements.txt  
-3. Explain how to use the simple commands: python run.py process and python run.py dashboard
+3. Explain how to use the simple commands: python run.py photo_processing and python run.py dashboard
 4. Show me what the tool does and help me analyze some photos
 
 The main entry point is run.py with these commands:
-- python run.py process    (analyze photos with AI)
-- python run.py dashboard  (search processed photos)  
-- python run.py           (interactive menu)
+- python run.py photo_processing  (analyze photos with AI)
+- python run.py dashboard         (search processed photos)  
+- python run.py                   (interactive menu)
 ```
 
 ### Step 2: Follow AI Instructions
@@ -43,7 +43,7 @@ Set up TestPhotos for me:
 ```
 Help me analyze photos with TestPhotos:
 1. Put some photos in the sample_photos/ folder
-2. Run python run.py process
+2. Run python run.py photo_processing
 3. Explain what the AI detected in my photos
 4. Show me the generated files in main_app_outputs/
 ```
@@ -107,7 +107,7 @@ python run.py --help
 ```bash
 # 1. Add photos to sample_photos/ folder
 # 2. Process them
-python run.py process
+python run.py photo_processing
 
 # 3. Search results  
 python run.py dashboard

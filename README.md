@@ -19,9 +19,9 @@ cp /path/to/your/photos/* sample_photos/
 
 ### 3. Run Analysis
 ```bash
-python run.py process    # Process photos with AI
-python run.py dashboard  # Search and explore results
-python run.py           # Interactive menu
+python run.py photo_processing  # Process photos with AI
+python run.py dashboard         # Search and explore results
+python run.py                   # Interactive menu
 ```
 
 That's it! 🎉
@@ -88,9 +88,9 @@ python run.py --help
 
 ### Command-Line Interface
 ```bash
-python run.py process    # Analyze photos with AI
-python run.py dashboard  # Search processed photos
-python run.py           # Interactive menu with help
+python run.py photo_processing  # Analyze photos with AI
+python run.py dashboard         # Search processed photos
+python run.py                   # Interactive menu with help
 ```
 
 ### Interactive Menu
@@ -233,7 +233,7 @@ pip install torch torchvision ultralytics opencv-python
 **Out of memory:**
 ```bash
 # Use smaller model
-python run.py process  # Choose "1 random photo" first
+python run.py photo_processing  # Choose "1 random photo" first
 ```
 
 **No AI results:**

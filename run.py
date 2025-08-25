@@ -3,9 +3,9 @@
 TestPhotos - Historical Photo Analysis Tool
 
 Simple commands:
-- python run.py process    # Process photos with AI analysis
-- python run.py dashboard  # Search and explore processed photos  
-- python run.py            # Interactive menu
+- python run.py photo_processing  # Process photos with AI analysis
+- python run.py dashboard         # Search and explore processed photos  
+- python run.py                   # Interactive menu
 """
 
 import sys
@@ -249,9 +249,9 @@ def show_help():
     print("   └── data_search_dashord/ - Search results")
     
     print("\n🔧 Commands:")
-    print("   python run.py           - Interactive menu")
-    print("   python run.py process   - Process photos")
-    print("   python run.py dashboard - Search interface")
+    print("   python run.py                  - Interactive menu")
+    print("   python run.py photo_processing - Process photos")
+    print("   python run.py dashboard        - Search interface")
     
     print("\n🤖 AI Analysis Features:")
     print("   • Photo colorization (black & white → color)")
@@ -279,15 +279,15 @@ def main():
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
         
-        if command == "process":
+        if command in ["photo_processing", "process"]:
             run_process_command()
-        elif command == "dashboard":
+        elif command in ["dashboard", "run_dashboard"]:
             run_dashboard_command()
         elif command in ["help", "-h", "--help"]:
             show_help()
         else:
             print(f"❌ Unknown command: {command}")
-            print("📖 Available commands: process, dashboard, help")
+            print("📖 Available commands: photo_processing, dashboard, help")
             print("   Or run without arguments for interactive menu")
     else:
         show_interactive_menu()

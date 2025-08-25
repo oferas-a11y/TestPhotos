@@ -158,7 +158,7 @@ def main():
         print("🎉 Setup completed successfully!")
         print("\n📖 Next steps:")
         print("1. Add photos to sample_photos/ folder")
-        print("2. Run: python run.py process")
+        print("2. Run: python run.py photo_processing")
         print("3. Run: python run.py dashboard")
         print("\n💡 For help: python run.py")
         
