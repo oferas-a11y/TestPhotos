@@ -1,10 +1,14 @@
 """Dashboard search pipeline (category + semantic search)."""
 
+import base64
 import csv
 import json
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
+import unicodedata
+import re
 
 import numpy as np
 from sentence_transformers import SentenceTransformer  # type: ignore
@@ -162,6 +166,112 @@ class CategorySearch:
             f.write("\n".join(lines))
 
         return out_path
+
+    def write_gallery(self, category: str, rows: List[Dict[str, str]]) -> Path:
+        """Write category search HTML gallery."""
+        self.data_loader.output_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = self.data_loader.output_dir / f"category_{category}_{ts}.html"
+
+        def esc(t: str) -> str:
+            return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+        def get_image_url(row: Dict[str, str]) -> str:
+            """Get base64 data URL for original image from CSV path."""
+            orig_path = row.get('original_path', '')
+            if not orig_path:
+                return ""
+            
+            # Get absolute path from CSV relative path
+            project_root = self.data_loader.output_dir.parent.parent
+            source_path = project_root / orig_path
+            
+            if not source_path.exists():
+                return ""
+            
+            # Read image and convert to base64 data URL
+            try:
+                with open(source_path, 'rb') as f:
+                    image_data = f.read()
+                b64_data = base64.b64encode(image_data).decode()
+                ext = source_path.suffix.lower()
+                mime = 'image/jpeg' if ext in ['.jpg', '.jpeg'] else 'image/png'
+                return f"data:{mime};base64,{b64_data}"
+            except Exception:
+                return ""
+
+        parts: List[str] = []
+        parts.append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
+        title = self.CATEGORIES.get(category, category)
+        parts.append(f"<title>Category Search: {esc(title)}</title>")
+        parts.append("<style>")
+        parts.append("body{font-family:Arial,Helvetica,sans-serif;margin:20px}")
+        parts.append(".item{margin-bottom:30px;display:flex;gap:16px;align-items:flex-start}")
+        parts.append(".image-container{flex-shrink:0}")
+        parts.append("img{max-width:360px;height:auto;border:1px solid #ddd;border-radius:4px}")
+        parts.append("img.missing{background:#f0f0f0;padding:20px;text-align:center;color:#666}")
+        parts.append(".meta{max-width:800px;padding-left:10px}")
+        parts.append(".path{font-size:0.9em;color:#666;margin-bottom:10px}")
+        parts.append("</style>")
+        parts.append("</head><body>")
+        parts.append(f"<h2>Category: {esc(title)}</h2>")
+        parts.append(f"<p>Total found: {len(rows)}</p>")
+
+        for i, r in enumerate(rows, 1):
+            orig_path = r.get('original_path', '')
+            desc = r.get('text_description', '') or r.get('description', '')
+
+            # Get original B&W image URL
+            img_path = get_image_url(r)
+
+            parts.append('<div class="item">')
+            parts.append('<div class="image-container">')
+
+            if img_path:
+                filename = Path(orig_path).name if orig_path else f"Image {i}"
+                parts.append(
+                    f'<img src="{esc(img_path)}" alt="{esc(filename)}" '
+                    f'onerror="this.style.display=\'none\'; '
+                    f'this.nextElementSibling.style.display=\'flex\'">')
+                parts.append(
+                    '<div style="display:none;width:360px;height:240px;'
+                    'background:#f0f0f0;border:1px solid #ddd;border-radius:4px;'
+                    'align-items:center;justify-content:center;color:#666;'
+                    'font-size:14px;flex-direction:column">'
+                    'Original image not found</div>')
+            else:
+                parts.append(
+                    '<div style="width:360px;height:240px;background:#f0f0f0;'
+                    'border:1px solid #ddd;border-radius:4px;display:flex;'
+                    'align-items:center;justify-content:center;color:#666;'
+                    'font-size:14px">Original image not available</div>')
+
+            parts.append("</div>")
+            parts.append('<div class="meta">')
+
+            # Show original filename prominently
+            if orig_path:
+                filename = Path(orig_path).name
+                parts.append(
+                    f'<div class="path"><strong>📸 {esc(filename)}</strong></div>')
+
+            parts.append(f"<h3>{i}. Historical Photo Analysis</h3>")
+
+            if desc:
+                parts.append(f"<p>{esc(desc)}</p>")
+
+            parts.append(
+                '<p style="font-size:0.9em;color:#888;margin-top:15px;">'
+                '<em>Showing original black & white historical photograph</em></p>')
+            parts.append("</div>")
+            parts.append("</div>")
+
+        parts.append("</body></html>")
+        
+        with open(out, "w", encoding="utf-8") as f:
+            f.write("".join(parts))
+        
+        return out
 
     def _add_row_details(self, lines: List[str], r: Dict[str, str]) -> None:
         """Add detailed information for a single row."""
@@ -325,28 +435,97 @@ class SemanticSearch:
         def esc(t: str) -> str:
             return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
+        def make_safe_filename(filename: str) -> str:
+            """Create a web-safe filename from any string."""
+            # Normalize unicode characters
+            filename = unicodedata.normalize('NFKD', filename)
+            # Remove non-ASCII characters
+            filename = filename.encode('ascii', 'ignore').decode('ascii')
+            # Replace spaces and special chars with underscores
+            filename = re.sub(r'[^\w\.-]', '_', filename)
+            # Remove multiple underscores
+            filename = re.sub(r'_+', '_', filename)
+            # Remove leading/trailing underscores
+            filename = filename.strip('_')
+            return filename or 'unnamed'
+
+        def get_image_url(row: Dict[str, str]) -> str:
+            """Get base64 data URL for original image from CSV path."""
+            orig_path = row.get('original_path', '')
+            if not orig_path:
+                return ""
+            
+            # Get absolute path from CSV relative path
+            project_root = self.data_loader.output_dir.parent.parent
+            source_path = project_root / orig_path
+            
+            if not source_path.exists():
+                return ""
+            
+            # Read image and convert to base64 data URL
+            try:
+                with open(source_path, 'rb') as f:
+                    image_data = f.read()
+                b64_data = base64.b64encode(image_data).decode()
+                ext = source_path.suffix.lower()
+                mime = 'image/jpeg' if ext in ['.jpg', '.jpeg'] else 'image/png'
+                return f"data:{mime};base64,{b64_data}"
+            except Exception:
+                return ""
+
         parts: List[str] = []
         parts.append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
         parts.append("<title>Semantic Search Results</title>")
         parts.append("<style>")
         parts.append("body{font-family:Arial,Helvetica,sans-serif;margin:20px}")
-        parts.append(".item{margin-bottom:30px;display:flex;gap:16px}")
-        parts.append("img{max-width:360px;height:auto;border:1px solid #ddd}")
-        parts.append(".meta{max-width:800px}")
+        parts.append(".item{margin-bottom:30px;display:flex;gap:16px;align-items:flex-start}")
+        parts.append(".image-container{flex-shrink:0}")
+        parts.append("img{max-width:360px;height:auto;border:1px solid #ddd;border-radius:4px}")
+        parts.append("img.missing{background:#f0f0f0;padding:20px;text-align:center;color:#666}")
+        parts.append(".meta{max-width:800px;padding-left:10px}")
+        parts.append(".path{font-size:0.9em;color:#666;margin-bottom:10px}")
         parts.append("</style>")
         parts.append("</head><body>")
         parts.append(f"<h2>Query: {esc(query)}</h2>")
         parts.append(f"<p>Total returned: {len(rows)}</p>")
 
         for i, r in enumerate(rows, 1):
-            orig = r.get('original_path', '')
+            orig_path = r.get('original_path', '')
             desc = r.get('description', '')
+            
+            # Get original B&W image URL
+            img_path = get_image_url(r)
+            
             parts.append('<div class="item">')
-            parts.append(f"<div><img src=\"{esc(orig)}\" alt=\"{esc(Path(orig).name)}\"></div>")
-            parts.append("<div class=\"meta\">")
-            parts.append(f"<h3>{i}. {esc(orig)}</h3>")
+            parts.append('<div class="image-container">')
+            
+            if img_path:
+                original_filename = Path(orig_path).name if orig_path else f"Image {i}"
+                parts.append(f'<img src="{esc(img_path)}" alt="{esc(original_filename)}" '
+                           f'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\'">')
+                parts.append(f'<div style="display:none;width:360px;height:240px;background:#f0f0f0;'
+                           f'border:1px solid #ddd;border-radius:4px;align-items:center;'
+                           f'justify-content:center;color:#666;font-size:14px;flex-direction:column">Original image not found</div>')
+            else:
+                parts.append('<div style="width:360px;height:240px;background:#f0f0f0;'
+                           'border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;'
+                           'justify-content:center;color:#666;font-size:14px">Original image not available</div>')
+            
+            parts.append("</div>")
+            parts.append('<div class="meta">')
+            
+            # Show original filename prominently
+            if orig_path:
+                parts.append(f'<div class="path"><strong>📸 {esc(Path(orig_path).name)}</strong></div>')
+            
+            parts.append(f"<h3>{i}. Historical Photo Analysis</h3>")
             if desc:
                 parts.append(f"<p>{esc(desc)}</p>")
+            
+            # Add note about original B&W photos
+            parts.append('<p style="font-size:0.9em;color:#888;margin-top:15px;">'
+                        '<em>Showing original black & white historical photograph</em></p>')
+            
             parts.append("</div>")
             parts.append("</div>")
 
@@ -382,8 +561,17 @@ class DashboardPipeline:
             return
 
         rows = self.category_search.filter_rows(idx, cat)
-        out = self.category_search.write_report(cat, rows)
-        print(f"\nWrote report: {out}")
+        out_txt = self.category_search.write_report(cat, rows)
+        out_html = self.category_search.write_gallery(cat, rows)
+        print(f"\nWrote report: {out_txt}")
+        print(f"Wrote gallery: {out_html}")
+        
+        # Open HTML gallery in browser
+        try:
+            webbrowser.open(f"file://{out_html.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"⚠️  Could not open browser: {e}")
 
     def run_semantic_search(self) -> None:
         """Run interactive semantic search."""
@@ -414,6 +602,13 @@ class DashboardPipeline:
             out_html = self.semantic_search.write_gallery(query, results)
             print(f"Wrote report: {out_txt}")
             print(f"Wrote gallery: {out_html}")
+            
+            # Open HTML gallery in browser
+            try:
+                webbrowser.open(f"file://{out_html.absolute()}")
+                print("✅ Gallery opened in browser")
+            except Exception as e:
+                print(f"⚠️  Could not open browser: {e}")
 
         except FileNotFoundError as e:
             print(f"Error: {e}")

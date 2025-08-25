@@ -44,6 +44,8 @@ main_app_outputs/
 !main_app_outputs/data_search_dashord/embeddings_minilm_l6.npz
 !main_app_outputs/data_search_dashord/embeddings_meta.json
 !main_app_outputs/colorized/.gitkeep
+# Gallery images for HTML display (exclude - regenerated as needed)
+main_app_outputs/gallery_images/
 # Exclude individual analysis JSON files (too many files)
 main_app_outputs/results/full_*.json
 main_app_outputs/results/llm_*_orig.json
