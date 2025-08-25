@@ -364,12 +364,18 @@ class CSVExporter:
                     except Exception:
                         pass
 
-            # Gender counts
+            # Gender counts - only include non-zero counts
             clip_obj = record.get('clip', {})
             genders = clip_obj.get('people_gender', [])
             women = sum(1 for g in genders if isinstance(g, dict) and CSVExporter._is_woman(g))
             men = len(genders) - women
-            parts.append(f"{men} men {women} women")
+            gender_parts = []
+            if men > 0:
+                gender_parts.append(f"{men} men")
+            if women > 0:
+                gender_parts.append(f"{women} women")
+            if gender_parts:
+                parts.append(" ".join(gender_parts))
 
             # Location info
             io = clip_obj.get('indoor_outdoor', 'unknown')
