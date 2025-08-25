@@ -1,5 +1,4 @@
 import csv
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -149,12 +148,14 @@ def write_report(cat: str, rows: List[Dict[str, str]]) -> Path:
             lines.append(f"Nazi: {r.get('llm_nazi_symbols')}")
         # Texts
         if r.get("hebrew_present", "").lower() == "true":
-            ht = r.get("hebrew_text", ""); tr = r.get("hebrew_translation", "")
+            ht = r.get("hebrew_text", "")
+            tr = r.get("hebrew_translation", "")
             show = " - ".join([s for s in [ht, tr] if s])
             if show:
                 lines.append(f"Hebrew: {show}")
         if r.get("german_present", "").lower() == "true":
-            gt = r.get("german_text", ""); tr2 = r.get("german_translation", "")
+            gt = r.get("german_text", "")
+            tr2 = r.get("german_translation", "")
             show2 = " - ".join([s for s in [gt, tr2] if s])
             if show2:
                 lines.append(f"German: {show2}")
