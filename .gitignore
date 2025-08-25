@@ -31,14 +31,22 @@ opencv_analysis/models/colorization_release_v2.caffemodel
 yolo_detection/yolov8s.pt
 yolov8s.pt
 
-# Outputs (force-add specific files if you choose later)
+# Outputs (include CSV data and embeddings for dashboard functionality)
 main_app_outputs/
 !main_app_outputs/.gitkeep
+!main_app_outputs/results/
 !main_app_outputs/results/.gitkeep
+!main_app_outputs/results/*.csv
+!main_app_outputs/results/summary.json
+!main_app_outputs/results/summary.txt
+!main_app_outputs/data_search_dashord/
 !main_app_outputs/data_search_dashord/.gitkeep
-!main_app_outputs/colorized/.gitkeep
 !main_app_outputs/data_search_dashord/embeddings_minilm_l6.npz
 !main_app_outputs/data_search_dashord/embeddings_meta.json
+!main_app_outputs/colorized/.gitkeep
+# Exclude individual analysis JSON files (too many files)
+main_app_outputs/results/full_*.json
+main_app_outputs/results/llm_*_orig.json
 
 # Node/npm (if any tooling is added later)
 node_modules/
