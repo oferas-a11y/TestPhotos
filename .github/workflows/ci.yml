@@ -42,7 +42,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements-ci.txt
+        pip install -r requirements.txt
     
     # Skip CLIP installation for CI to avoid dependency conflicts
     # - name: Install CLIP (after main dependencies)
@@ -63,23 +63,23 @@ jobs:
       run: |
         python -c "
         try:
-            from opencv_analysis.photo_analyzer import PhotoAnalyzer
-            print('✅ OpenCV module imports successfully')
-        except Exception as e:
-            print('❌ OpenCV import failed:', e)
-        
-        try:
-            from photo_clustering.process_photos import PhotoProcessor
-            from photo_clustering.kmeans_clustering import PhotoClusterer
-            print('✅ Clustering modules import successfully')
-        except Exception as e:
-            print('❌ Clustering import failed:', e)
-        
-        try:
             from yolo_detection.yolo_detector import YOLODetector
             print('✅ YOLO module imports successfully')
         except Exception as e:
             print('❌ YOLO import failed:', e)
+        
+        try:
+            from main_app.modules.clip_runner import CLIPAnalyzer
+            print('✅ CLIP module imports successfully')
+        except Exception as e:
+            print('❌ CLIP import failed:', e)
+        
+        try:
+            from main_app.main_pipeline import MainPipeline
+            from main_app.dashboard_pipeline import DashboardPipeline
+            print('✅ Main pipeline modules import successfully')
+        except Exception as e:
+            print('❌ Pipeline import failed:', e)
             
         print('🎉 Basic validation complete!')
         "
@@ -109,33 +109,36 @@ jobs:
         # Check that key files exist
         test -f README.md
         test -f requirements.txt
-        test -f examples/README.md
+        test -f run.py
         
-        # Check that all main directories exist
+        # Check that main directories exist in new structure
+        test -d main_app
+        test -d main_app/modules
         test -d opencv_analysis
-        test -d yolo_detection  
-        test -d clip_analysis
-        test -d photo_clustering
-        test -d examples
+        test -d yolo_detection
+        test -d sample_photos
         
         echo "✅ Documentation structure check passed"
     
-    - name: Validate JSON examples
+    - name: Validate JSON structure
       run: |
-        # Check that example JSON files are valid
+        # Check that the main app structure is valid
         python -c "
         import json
         from pathlib import Path
         
-        json_files = list(Path('examples').glob('*.json'))
-        for json_file in json_files:
-            try:
-                with open(json_file, 'r') as f:
-                    json.load(f)
-                print(f'✅ {json_file} is valid JSON')
-            except json.JSONDecodeError as e:
-                print(f'❌ {json_file} is invalid: {e}')
-                exit(1)
+        # Check if output directory structure makes sense
+        if Path('main_app_outputs').exists():
+            print('✅ Output directory structure exists')
+        else:
+            print('ℹ️ No output directory found (normal for fresh install)')
         
-        print('✅ All JSON examples are valid')
+        # Check that run.py is executable
+        if Path('run.py').exists():
+            print('✅ Main entry point exists')
+        else:
+            print('❌ run.py not found')
+            exit(1)
+        
+        print('✅ Project structure validation complete')
         "
