@@ -74,6 +74,21 @@ You can change `--input` to any path. The script will write the output image to 
 
 All notable changes to this project will be documented in this file.
 
+## 2025-09-03
+
+### Added
+- `PIPELINE.md`: Clear, non-technical documentation of the end-to-end processing pipeline (colorization → YOLO → CLIP → OCR → LLM → CSVs → summaries) and the search pipeline (category and semantic searches). Includes which tool is used at each step and its category (pre-trained, zero-shot, OCR, LLM), where outputs are written, and how to run both pipelines.
+
+### Why
+- Provide a single authoritative, readable guide for teammates and stakeholders that explains what the system does, how it works, and how to run searches on the results without reading code.
+
+### What works
+- Processing runs interactively (choose 1/5/all photos), writes per-photo JSONs, summaries, and two CSVs aligned to the original black-and-white photo paths.
+- Search pipeline supports category counts/reports/galleries and semantic search with MiniLM-L6 embeddings and galleries.
+
+### What needs attention
+- Ensure Tesseract and pytesseract are installed if OCR results are required. Otherwise the pipeline proceeds without OCR.
+
 ## 2025-02-03
 
 ### YOLO Detection Improvements (no fine-tuning)
