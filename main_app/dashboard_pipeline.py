@@ -52,10 +52,11 @@ class DataLoader:
 
         for r in text_rows:
             k = r.get("original_path", "")
+            comprehensive_text = r.get("comprehensive_text", "") or r.get("description", "")
             if k in idx:
-                idx[k]["text_description"] = r.get("description", "")
+                idx[k]["text_description"] = comprehensive_text
             else:
-                idx[k] = {"text_description": r.get("description", "")}
+                idx[k] = {"text_description": comprehensive_text}
 
         return idx
 
@@ -345,7 +346,7 @@ class SemanticSearch:
         self.data_loader.output_dir.mkdir(parents=True, exist_ok=True)
         model = SentenceTransformer(self.model_name)
 
-        texts = [r.get('description', '') for r in rows]
+        texts = [r.get('comprehensive_text', '') or r.get('description', '') for r in rows]
         embs = model.encode(
             texts,
             batch_size=64,
@@ -362,7 +363,7 @@ class SemanticSearch:
             'colorized_path': r.get('colorized_path', ''),
             'full_results_path': r.get('full_results_path', ''),
             'llm_json_path': r.get('llm_json_path', ''),
-            'description': r.get('description', '')
+            'description': r.get('comprehensive_text', '') or r.get('description', '')
         } for r in rows]
 
         with open(self.meta_json, 'w', encoding="utf-8") as f:
