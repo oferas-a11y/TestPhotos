@@ -294,7 +294,7 @@ Now, please analyze the historical photograph provided and return your response 
                     model="meta-llama/llama-4-maverick-17b-128e-instruct",
                     messages=messages_obj,
                     temperature=0.2,
-                    max_completion_tokens=1024,
+                    max_tokens=1024,
                     top_p=1,
                     stream=False,
                     response_format={"type": "json_object"},
