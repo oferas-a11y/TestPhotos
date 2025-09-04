@@ -18,18 +18,42 @@ class LLMInterpreter:
             self.client = None  # type: ignore[assignment]
             self.error: Optional[str] = f"groq package not installed: {exc}"
             return
+        # Debug: show whether key is present (not the value)
+        key_present = bool(os.getenv('GROQ_API_KEY'))
+        print(f"[LLM] GROQ_API_KEY present: {str(key_present).lower()}")
         self.client = Groq()
         self.error = None
 
     def analyze(self, image_path: str, save_path: Optional[str] = None, retries: int = 3) -> Optional[str]:
+        print(f"🔍 [LLM DEBUG] Starting analysis of: {image_path}")
+        print(f"🔍 [LLM DEBUG] Save path: {save_path}")
+        print(f"🔍 [LLM DEBUG] Client status: {self.client is not None}")
+        
         if self.client is None:
+            print("❌ [LLM DEBUG] Client is None - no API key or initialization failed")
             return None
 
+        # Check if image file exists
+        if not os.path.exists(image_path):
+            error_msg = f"❌ [LLM DEBUG] Image file not found: {image_path}"
+            print(error_msg)
+            return json.dumps({"error": "Image file not found", "path": image_path})
+
+        print(f"✅ [LLM DEBUG] Image file exists: {os.path.getsize(image_path)} bytes")
+
         # Encode the image as data URL (do not change the user's prompt text)
-        with Image.open(image_path).convert('RGB') as im:
-            buf = io.BytesIO()
-            im.save(buf, format='JPEG')
-            b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+        try:
+            with Image.open(image_path).convert('RGB') as im:
+                print(f"🖼️ [LLM DEBUG] Image loaded: {im.size[0]}x{im.size[1]} pixels")
+                buf = io.BytesIO()
+                im.save(buf, format='JPEG')
+                b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                print(f"📦 [LLM DEBUG] Image encoded to base64: {len(b64)} characters")
+        except Exception as e:
+            error_msg = f"❌ [LLM DEBUG] Failed to encode image: {str(e)}"
+            print(error_msg)
+            return json.dumps({"error": "Image encoding failed", "details": str(e)})
+            
         data_url = f"data:image/jpeg;base64,{b64}"
 
         # Type ignores to accommodate SDK types
@@ -260,12 +284,14 @@ Now, please analyze the historical photograph provided and return your response 
             ]
         
         # Retry wrapper for API call
+        print(f"🌐 [LLM DEBUG] Making API call to Groq...")
         completion: Any = None
         last_exc: Optional[Exception] = None
         for attempt in range(max(1, retries)):
+            print(f"🔄 [LLM DEBUG] API attempt {attempt + 1}/{retries}")
             try:
                 completion = self.client.chat.completions.create(  # type: ignore[call-arg]
-                    model="meta-llama/llama-4-scout-17b-16e-instruct",
+                    model="meta-llama/llama-4-maverick-17b-128e-instruct",
                     messages=messages_obj,
                     temperature=0.2,
                     max_completion_tokens=1024,
@@ -274,52 +300,80 @@ Now, please analyze the historical photograph provided and return your response 
                     response_format={"type": "json_object"},
                     stop=None
                 )
+                print(f"✅ [LLM DEBUG] API call successful on attempt {attempt + 1}")
                 last_exc = None
                 break
             except Exception as exc:
+                print(f"❌ [LLM DEBUG] API call failed on attempt {attempt + 1}: {str(exc)}")
                 last_exc = exc
-                # backoff
-                try:
-                    import time as _t
-                    _t.sleep(3.0 * (attempt + 1))
-                except Exception:
-                    pass
+                if attempt < retries - 1:  # Don't sleep on last attempt
+                    sleep_time = 3.0 * (attempt + 1)
+                    print(f"⏳ [LLM DEBUG] Waiting {sleep_time} seconds before retry...")
+                    try:
+                        import time as _t
+                        _t.sleep(sleep_time)
+                    except Exception:
+                        pass
         if completion is None:
+            print(f"❌ [LLM DEBUG] All API attempts failed. Final error: {str(last_exc)}")
             err_obj = {"error": f"LLM API rejected or unreachable: {str(last_exc) or 'unknown'}", "error_type": "api_error"}
             if save_path:
                 try:
                     with open(save_path, 'w', encoding='utf-8') as f:
                         f.write(json.dumps(err_obj, ensure_ascii=False, indent=2))
-                except Exception:
-                    pass
-            print(json.dumps(err_obj, ensure_ascii=False))
+                    print(f"💾 [LLM DEBUG] Error saved to: {save_path}")
+                except Exception as e:
+                    print(f"❌ [LLM DEBUG] Failed to save error: {str(e)}")
+            print(f"📤 [LLM DEBUG] Returning error: {json.dumps(err_obj, ensure_ascii=False)}")
             return json.dumps(err_obj, ensure_ascii=False)
 
         # Non-streaming JSON response
         full = completion.choices[0].message.content or ""  # type: ignore[attr-defined]
+        print(f"📥 [LLM DEBUG] Raw API response received: {len(full)} characters")
+        print(f"📝 [LLM DEBUG] First 200 chars of response: {full[:200]}...")
+        
         # Try to extract JSON only and print
         start = full.find('{')
         end = full.rfind('}')
+        print(f"🔍 [LLM DEBUG] JSON boundaries: start={start}, end={end}")
+        
         if start != -1 and end != -1 and end > start:
             json_str = full[start:end+1]
-            print(json_str)
+            print(f"✅ [LLM DEBUG] Extracted JSON: {len(json_str)} characters")
+            print(f"🎯 [LLM DEBUG] JSON content: {json_str}")
+            
+            # Validate JSON
+            try:
+                parsed = json.loads(json_str)
+                print(f"✅ [LLM DEBUG] JSON is valid, contains {len(parsed)} keys")
+            except json.JSONDecodeError as e:
+                print(f"❌ [LLM DEBUG] JSON parsing failed: {str(e)}")
+            
             if save_path:
                 try:
                     with open(save_path, 'w', encoding='utf-8') as f:
                         f.write(json_str)
-                except Exception:
-                    pass
+                    print(f"💾 [LLM DEBUG] Output saved to: {save_path}")
+                except Exception as e:
+                    print(f"❌ [LLM DEBUG] Failed to save output: {str(e)}")
+            
+            print(f"📤 [LLM DEBUG] Returning successful JSON response")
             return json_str
         else:
             # Treat as bad JSON
+            print(f"❌ [LLM DEBUG] No valid JSON found in response")
+            print(f"📝 [LLM DEBUG] Full response: {full}")
             err_obj = {"error": "LLM returned non-JSON or malformed JSON", "error_type": "bad_json", "raw": full[:5000]}
-            print(json.dumps(err_obj, ensure_ascii=False))
+            
             if save_path:
                 try:
                     with open(save_path, 'w', encoding='utf-8') as f:
                         f.write(json.dumps(err_obj, ensure_ascii=False, indent=2))
-                except Exception:
-                    pass
+                    print(f"💾 [LLM DEBUG] Error saved to: {save_path}")
+                except Exception as e:
+                    print(f"❌ [LLM DEBUG] Failed to save error: {str(e)}")
+            
+            print(f"📤 [LLM DEBUG] Returning bad JSON error")
             return json.dumps(err_obj, ensure_ascii=False)
 
 

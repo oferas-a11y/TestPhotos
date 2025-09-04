@@ -2,6 +2,17 @@
 
 An AI-powered tool for analyzing historical photographs with automatic symbol detection, text extraction, and semantic search capabilities.
 
+## 🆕 Recent Updates
+
+### Latest Features (v2.4+):
+- **🧠 Enhanced LLM Model**: Upgraded to `meta-llama/llama-4-maverick-17b-128e-instruct` for improved analysis
+- **🔄 Optimized Data Processing**: Comprehensive text generation with proper ordering (LLM caption → Hebrew/German text → CLIP → YOLO → LLM details → collection)
+- **🎯 Improved Semantic Search**: Enhanced dashboard with better text embeddings and search accuracy
+- **📊 Unified CSV Format**: Streamlined data structure for better performance
+- **🖼️ HTML Gallery Views**: Beautiful gallery displays for both semantic and category search results
+- **🚀 Better Pipeline Processing**: Handles all photos from processed index with fallback descriptions
+- **⚡ Performance Optimizations**: Faster processing and reduced memory usage
+
 ## 🎯 Quick Start (3 Simple Commands)
 
 ### 1. Setup
