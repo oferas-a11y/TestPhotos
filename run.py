@@ -13,10 +13,21 @@ import os
 from pathlib import Path
 import json
 import csv
+import subprocess
 from typing import Set
 
-# Add main_app to path
-sys.path.insert(0, str(Path(__file__).parent / "main_app"))
+# Default input directory (user collection)
+DEFAULT_INPUT_DIR = os.path.join("photo_collections", "project Photography")
+
+# Add project root and main_app to path
+project_root = str(Path(__file__).parent)
+main_app_path = str(Path(__file__).parent / "main_app")
+
+# Insert project root first, then main_app
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+if main_app_path not in sys.path:
+    sys.path.insert(1, main_app_path)  # Insert after project root
 
 try:
     from main_pipeline import run_main_pipeline
@@ -48,18 +59,85 @@ def get_processed_photos() -> Set[str]:
 
 
 def get_available_photos() -> Set[str]:
-    """Get list of available photos in sample_photos directory."""
+    """Get list of available photos in the default input directory (recursive)."""
     photos = set()
-    photo_dir = Path("sample_photos")
+    photo_dir = Path(DEFAULT_INPUT_DIR)
     
     if photo_dir.exists():
-        exts = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", 
+        exts = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif",
                 ".JPG", ".JPEG", ".PNG", ".BMP", ".TIFF", ".TIF"}
-        for file_path in photo_dir.iterdir():
-            if file_path.suffix in exts and file_path.is_file():
+        for file_path in photo_dir.rglob("*"):
+            if file_path.is_file() and file_path.suffix in exts:
                 photos.add(file_path.name)
     
     return photos
+
+
+def count_photos_in_directory(dir_path: str) -> int:
+    """Count photos recursively under the given directory."""
+    p = Path(dir_path)
+    if not p.exists():
+        return 0
+    exts = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif",
+            ".JPG", ".JPEG", ".PNG", ".BMP", ".TIFF", ".TIF"}
+    try:
+        return sum(1 for fp in p.rglob("*") if fp.is_file() and fp.suffix in exts)
+    except Exception:
+        return 0
+
+
+def count_processed_photos() -> int:
+    """Count processed photos based on data_full.csv rows (excluding header)."""
+    csv_path = Path("main_app_outputs") / "results" / "data_full.csv"
+    if not csv_path.exists():
+        return 0
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            import csv as _csv
+            rdr = _csv.DictReader(f)
+            return sum(1 for _ in rdr)
+    except Exception:
+        return 0
+
+
+def run_status_command():
+    """Print status of total vs processed photos."""
+    print("📊 TestPhotos - Status")
+    print("=" * 50)
+    total = count_photos_in_directory(DEFAULT_INPUT_DIR)
+    processed = count_processed_photos()
+    print(f"📁 Source directory: {DEFAULT_INPUT_DIR}")
+    print(f"🧮 Total photos found (recursive): {total}")
+    print(f"✅ Processed photos (in results): {processed}")
+    remaining = max(0, total - processed)
+    print(f"⏳ Remaining (approx): {remaining}")
+
+
+def run_clean_plan_command():
+    """Create a deletion plan for cleaning outputs without deleting anything."""
+    print("🧹 TestPhotos - Clean Plan (no deletion)")
+    print("=" * 50)
+    root = Path("main_app_outputs")
+    targets = [
+        root / "colorized",
+        root / "processed_photos",
+        root / "results",
+        root / "data_search_dashord",
+        root / "gallery_images"
+    ]
+    out = root / "files_to_delete.txt"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with open(out, 'w', encoding='utf-8') as f:
+        for t in targets:
+            if not t.exists():
+                continue
+            for p in t.rglob("*"):
+                if p.is_file():
+                    f.write(f"{p}\tReason: user requested clean pipeline reset\n")
+                    count += 1
+    print(f"📝 Plan written: {out}")
+    print(f"🗂️  Files listed for deletion: {count}")
 
 
 def check_dependencies() -> bool:
@@ -90,11 +168,11 @@ def run_process_command():
     # Check for photos
     available_photos = get_available_photos()
     if not available_photos:
-        print("❌ No photos found in sample_photos/ directory")
-        print("   Please add photos to the sample_photos/ folder")
+        print(f"❌ No photos found in {DEFAULT_INPUT_DIR} directory")
+        print(f"   Please add photos under '{DEFAULT_INPUT_DIR}'")
         return
     
-    print(f"📸 Found {len(available_photos)} photos in sample_photos/")
+    print(f"📸 Found {len(available_photos)} photos in {DEFAULT_INPUT_DIR}")
     
     # Check for already processed photos
     processed_photos = get_processed_photos()
@@ -119,7 +197,7 @@ def run_process_command():
     
     try:
         result = run_main_pipeline(
-            input_dir="sample_photos",
+            input_dir=DEFAULT_INPUT_DIR,
             output_dir="main_app_outputs", 
             models_dir=os.path.join("opencv_analysis", "models"),
             ab_boost=1.0,
@@ -157,13 +235,16 @@ def run_dashboard_command():
     dashboard = DashboardPipeline()
     
     print("\n📋 Search Options:")
-    print("1️⃣  Category Search - Filter by symbols, violence, text, etc.")
-    print("2️⃣  Semantic Search - Natural language search")
+    print("1️⃣  Category Search - Filter by symbols, violence, text, etc. (CSV)")
+    print("2️⃣  Semantic Search - Natural language search (MiniLM)")
     print("3️⃣  Build Embeddings - Prepare for semantic search")
+    print("4️⃣  ChromaDB Semantic Search - Vector database search")
+    print("5️⃣  ChromaDB Category Search - Fast metadata filtering")
+    print("6️⃣  ChromaDB Stats - Show vector database statistics")
     print("0️⃣  Exit")
     
     while True:
-        choice = input("\n🎯 Choose search type (1-3, 0 to exit): ").strip()
+        choice = input("\n🎯 Choose search type (1-6, 0 to exit): ").strip()
         
         if choice == "1":
             print("\n🏷️  Running Category Search...")
@@ -178,11 +259,23 @@ def run_dashboard_command():
             dashboard.build_embeddings()
             print("✅ Embeddings ready! Now you can use semantic search.")
             break
+        elif choice == "4":
+            print("\n🔍 Running ChromaDB Semantic Search...")
+            dashboard.run_chroma_semantic_search()
+            break
+        elif choice == "5":
+            print("\n🏷️  Running ChromaDB Category Search...")
+            dashboard.run_chroma_category_search()
+            break
+        elif choice == "6":
+            print("\n📊 ChromaDB Statistics...")
+            dashboard.get_chroma_stats()
+            break
         elif choice == "0":
             print("👋 Goodbye!")
             break
         else:
-            print("❌ Invalid choice. Please enter 1, 2, 3, or 0")
+            print("❌ Invalid choice. Please enter 1-6 or 0")
 
 
 def show_interactive_menu():
@@ -201,7 +294,7 @@ def show_interactive_menu():
     processed_photos = get_processed_photos()
     
     print("📊 Current Status:")
-    print(f"   📁 Photos in sample_photos/: {len(available_photos)}")
+    print(f"   📁 Photos in {DEFAULT_INPUT_DIR}: {len(available_photos)}")
     print(f"   ✅ Photos processed: {len(processed_photos)}")
     print(f"   🆕 New photos: {len(available_photos - processed_photos)}")
     print()
@@ -274,6 +367,109 @@ def show_help():
     input("\n📖 Press Enter to continue...")
 
 
+def run_chroma_search_command():
+    """Run ChromaDB-based search interface."""
+    print("🔍 TestPhotos - ChromaDB Vector Search")
+    print("=" * 50)
+    
+    # Import ChromaDB components
+    try:
+        from main_app.modules.chroma_handler import create_chroma_handler
+        from main_app.dashboard_pipeline import DashboardPipeline
+    except ImportError as e:
+        print(f"❌ ChromaDB components not available: {e}")
+        print("   Install ChromaDB with: pip install chromadb")
+        return
+    
+    # Initialize ChromaDB handler
+    chroma_handler = create_chroma_handler()
+    if not chroma_handler:
+        print("❌ ChromaDB not available or not initialized")
+        print("   Make sure ChromaDB is installed and you have processed photos")
+        return
+    
+    # Get stats
+    stats = chroma_handler.get_collection_stats()
+    print(f"📊 ChromaDB Database contains {stats.get('total_photos', 0)} photos")
+    
+    if stats.get('total_photos', 0) == 0:
+        print("⚠️  No photos found in ChromaDB")
+        print("   Run photo processing first to populate the database")
+        return
+    
+    # Initialize dashboard for ChromaDB methods
+    dashboard = DashboardPipeline()
+    
+    print("\n🔍 ChromaDB Search Options:")
+    print("1️⃣  Semantic Search - Natural language vector search")
+    print("2️⃣  Category Search - Fast metadata filtering")
+    print("3️⃣  Statistics - Show database information")
+    print("0️⃣  Exit")
+    
+    while True:
+        choice = input("\n🎯 Choose search type (1-3, 0 to exit): ").strip()
+        
+        if choice == "1":
+            print("\n🔍 ChromaDB Semantic Search...")
+            dashboard.run_chroma_semantic_search()
+            break
+        elif choice == "2":
+            print("\n🏷️  ChromaDB Category Search...")
+            dashboard.run_chroma_category_search()
+            break
+        elif choice == "3":
+            print("\n📊 ChromaDB Statistics...")
+            dashboard.get_chroma_stats()
+            break
+        elif choice == "0":
+            print("👋 Goodbye!")
+            break
+        else:
+            print("❌ Invalid choice. Please enter 1-3 or 0")
+
+
+def run_migrate_command():
+    """Run migration of existing CSV data to ChromaDB."""
+    print("🔄 TestPhotos - Migrate Data to ChromaDB")
+    print("=" * 50)
+    
+    # Check if CSV data exists
+    csv_path = Path("main_app_outputs") / "results" / "data_full.csv"
+    if not csv_path.exists():
+        print("❌ No CSV data found to migrate")
+        print("   Run photo processing first to create data")
+        return
+    
+    print("⚠️  This will migrate all existing photo analysis data to ChromaDB")
+    print("   This process may take a few minutes depending on data size")
+    
+    confirm = input("\n🤔 Continue with migration? (y/N): ").strip().lower()
+    if confirm not in ['y', 'yes']:
+        print("👋 Migration cancelled")
+        return
+    
+    # Run migration script
+    print("\n🔄 Starting migration...")
+    try:
+        # Import and run migration
+        python_cmd = sys.executable
+        script_path = Path("migrate_to_chroma.py")
+        if script_path.exists():
+            result = subprocess.run([python_cmd, str(script_path)], 
+                                   capture_output=True, text=True)
+            if result.returncode == 0:
+                print("✅ Migration completed successfully!")
+                print(result.stdout)
+            else:
+                print("❌ Migration failed:")
+                print(result.stderr)
+        else:
+            print("❌ Migration script not found: migrate_to_chroma.py")
+            print("   Please create the migration script first")
+    except Exception as e:
+        print(f"❌ Migration error: {e}")
+
+
 def main():
     """Main entry point."""
     if len(sys.argv) > 1:
@@ -283,11 +479,19 @@ def main():
             run_process_command()
         elif command in ["dashboard", "run_dashboard"]:
             run_dashboard_command()
+        elif command in ["chroma_search", "chroma"]:
+            run_chroma_search_command()
+        elif command in ["migrate", "migrate_chroma"]:
+            run_migrate_command()
+        elif command in ["status", "stats"]:
+            run_status_command()
+        elif command in ["clean", "clean_plan"]:
+            run_clean_plan_command()
         elif command in ["help", "-h", "--help"]:
             show_help()
         else:
             print(f"❌ Unknown command: {command}")
-            print("📖 Available commands: photo_processing, dashboard, help")
+            print("📖 Available commands: photo_processing, dashboard, chroma_search, migrate, status, clean, help")
             print("   Or run without arguments for interactive menu")
     else:
         show_interactive_menu()

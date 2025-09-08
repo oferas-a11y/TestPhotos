@@ -3,15 +3,126 @@
 import base64
 import csv
 import json
+import os
+import re
+import sys
+import unicodedata
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
-import unicodedata
-import re
+from typing import Dict, List, Tuple, Optional, Any
 
 import numpy as np
 from sentence_transformers import SentenceTransformer  # type: ignore
+
+# Load environment variables from .env file in project root
+
+
+def load_env():
+    """Load environment variables from .env file"""
+    env_file = Path(__file__).parent.parent / '.env'
+    if env_file.exists():
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ[key.strip()] = value.strip()
+
+
+load_env()
+
+# Add project root to path for importing modules
+project_root = os.path.dirname(os.path.dirname(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Import after path is set
+try:
+    # Import similarity search from local modules directory
+    from modules.similarity_search import (  # type: ignore
+        get_embeddings_status,
+        get_visual_similarities,
+        get_combined_similarities
+    )
+
+    # Try to import gemma_reranker from project root modules
+    try:
+        from modules.gemma_reranker import GemmaReranker  # type: ignore
+    except ImportError:
+        # If not found in project root, check current directory
+        project_root_alt = os.path.dirname(os.path.dirname(__file__))
+        if os.path.exists(os.path.join(project_root_alt, 'modules', 'gemma_reranker.py')):
+            sys.path.insert(0, project_root_alt)
+            from modules.gemma_reranker import GemmaReranker  # type: ignore
+        else:
+            raise ImportError("gemma_reranker not found in any location")
+
+    GEMINI_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Gemini reranking unavailable: {e}")
+    GEMINI_AVAILABLE = False
+
+    # Create dummy class to avoid import errors
+    class GemmaReranker:
+        """Dummy GemmaReranker class for when module is unavailable."""
+
+        def __init__(self):
+            """Initialize dummy reranker."""
+            pass
+
+        def rerank_results(self, query, results, top_k=10):
+            """Return original results without reranking."""
+            return results[:top_k]
+
+# Import ChromaDB handler
+try:
+    from modules.chroma_handler import (  # type: ignore
+        ChromaPhotoHandler,
+        is_chromadb_available,
+        create_chroma_handler
+    )
+    CHROMADB_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: ChromaDB unavailable: {e}")
+    CHROMADB_AVAILABLE = False
+
+    # Create dummy handler to avoid import errors
+    class ChromaPhotoHandler:
+        """Dummy ChromaPhotoHandler class for when module is unavailable."""
+
+        def __init__(self, *args, **kwargs):
+            """Initialize dummy handler."""
+
+        def search_photos(self, *args, **kwargs):
+            """Return empty search results."""
+            return {
+                'documents': [[]],
+                'metadatas': [[]],
+                'ids': [[]],
+                'distances': [[]]
+            }
+
+        def search_by_category(self, *args, **kwargs):
+            """Return empty category results."""
+            return {
+                'documents': [[]],
+                'metadatas': [[]],
+                'ids': [[]],
+                'distances': [[]]
+            }
+
+        def get_collection_stats(self):
+            """Return empty stats."""
+            return {'total_photos': 0, 'error': 'ChromaDB not available'}
+
+    def is_chromadb_available():
+        """Return False for dummy implementation."""
+        return False
+
+    def create_chroma_handler(*args, **kwargs):
+        """Return None for dummy implementation."""
+        return None
 
 
 class DataLoader:
@@ -182,14 +293,14 @@ class CategorySearch:
             orig_path = row.get('original_path', '')
             if not orig_path:
                 return ""
-            
+
             # Get absolute path from CSV relative path
             project_root = self.data_loader.output_dir.parent.parent
             source_path = project_root / orig_path
-            
+
             if not source_path.exists():
                 return ""
-            
+
             # Read image and convert to base64 data URL
             try:
                 with open(source_path, 'rb') as f:
@@ -268,10 +379,10 @@ class CategorySearch:
             parts.append("</div>")
 
         parts.append("</body></html>")
-        
+
         with open(out, "w", encoding="utf-8") as f:
             f.write("".join(parts))
-        
+
         return out
 
     def _add_row_details(self, lines: List[str], r: Dict[str, str]) -> None:
@@ -386,8 +497,9 @@ class SemanticSearch:
         meta = meta_data.get('rows', [])
         return embs, meta
 
-    def search(self, query: str, k: int = 5, threshold: float = 0.35) -> Tuple[List[Dict[str, str]], int]:
-        """Perform semantic search."""
+    def search(self, query: str, k: int = 5, threshold: float = 0.35,
+               use_gemma_reranking: bool = True) -> Tuple[List[Dict[str, str]], int]:
+        """Perform semantic search with optional Gemini reranking."""
         embs, meta = self.load_embeddings()
         model = SentenceTransformer(self.model_name)
 
@@ -398,10 +510,53 @@ class SemanticSearch:
         sims = embs @ q
         num_above = int((sims >= threshold).sum())
 
-        # Get top k results
-        idxs = np.argsort(-sims)[:max(1, k)]
-        results = [meta[int(i)] for i in idxs]
+        # Get top 30 results for Gemini reranking (or requested k if less than 30)
+        initial_k = (min(30, len(meta)) if use_gemma_reranking
+                     else max(1, k))
+        idxs = np.argsort(-sims)[:initial_k]
+        initial_results = [meta[int(i)] for i in idxs]
 
+        # Apply Gemini reranking if enabled and available
+        if use_gemma_reranking and len(initial_results) > k and GEMINI_AVAILABLE:
+            try:
+                print("🤖 [SEMANTIC DEBUG] Enhancing results with Gemini AI reranking...")
+                print(f"🔍 [SEMANTIC DEBUG] Initial MiniLM results: {len(initial_results)}")
+                print(f"🔍 [SEMANTIC DEBUG] Requesting top {k} from Gemini")
+                print(f"🔍 [SEMANTIC DEBUG] Query: '{query}'")
+
+                reranker = GemmaReranker()
+                reranked_results = reranker.rerank_results(query, initial_results, top_k=k)
+
+                print(f"✅ [SEMANTIC DEBUG] Gemini reranking complete: "
+                      f"{len(reranked_results)} results returned")
+
+                # Show comparison between MiniLM and Gemini ranking
+                print("📊 [SEMANTIC DEBUG] Ranking comparison:")
+                for i in range(min(5, len(reranked_results))):
+                    filename = reranked_results[i].get('original_path', '').split('/')[-1]
+                    gemma_rank = reranked_results[i].get('gemma_rank', 'N/A')
+                    print(f"  Final #{i + 1}: {filename} (was Gemini rank #{gemma_rank})")
+
+                return reranked_results, num_above
+            except ValueError as e:
+                if "GEMINI_API_KEY" in str(e):
+                    print("❌ [SEMANTIC DEBUG] Gemini reranking disabled: "
+                          "Missing GEMINI_API_KEY in .env file")
+                else:
+                    print(f"❌ [SEMANTIC DEBUG] Gemini reranking error: {e}")
+                print("📋 [SEMANTIC DEBUG] Continuing with MiniLM results only")
+            except Exception as e:
+                print(f"❌ [SEMANTIC DEBUG] Gemini reranking failed: {e}")
+                print(f"❌ [SEMANTIC DEBUG] Exception type: {type(e).__name__}")
+                import traceback
+                print("❌ [SEMANTIC DEBUG] Full traceback:")
+                traceback.print_exc()
+                print("📋 [SEMANTIC DEBUG] Continuing with MiniLM results only")
+        elif use_gemma_reranking and not GEMINI_AVAILABLE:
+            print("⚠️  Gemini reranking module not available - using MiniLM results only")
+
+        # Fallback to original MiniLM ranking
+        results = initial_results[:k]
         return results, num_above
 
     def write_report(self, query: str, rows: List[Dict[str, str]]) -> Path:
@@ -455,14 +610,14 @@ class SemanticSearch:
             orig_path = row.get('original_path', '')
             if not orig_path:
                 return ""
-            
+
             # Get absolute path from CSV relative path
             project_root = self.data_loader.output_dir.parent.parent
             source_path = project_root / orig_path
-            
+
             if not source_path.exists():
                 return ""
-            
+
             # Read image and convert to base64 data URL
             try:
                 with open(source_path, 'rb') as f:
@@ -485,6 +640,13 @@ class SemanticSearch:
         parts.append("img.missing{background:#f0f0f0;padding:20px;text-align:center;color:#666}")
         parts.append(".meta{max-width:800px;padding-left:10px}")
         parts.append(".path{font-size:0.9em;color:#666;margin-bottom:10px}")
+        parts.append(".similarity-section{margin-top:20px;border-top:1px solid #eee;"
+                     "padding-top:15px}")
+        parts.append(".similarity-row{display:flex;gap:10px;margin-bottom:15px;"
+                     "align-items:flex-start}")
+        parts.append(".similarity-img{width:80px;height:60px;object-fit:cover;border-radius:3px}")
+        parts.append(".similarity-info{flex:1}")
+        parts.append(".similarity-score{font-size:0.8em;color:#666;font-weight:bold}")
         parts.append("</style>")
         parts.append("</head><body>")
         parts.append(f"<h2>Query: {esc(query)}</h2>")
@@ -493,45 +655,347 @@ class SemanticSearch:
         for i, r in enumerate(rows, 1):
             orig_path = r.get('original_path', '')
             desc = r.get('description', '')
-            
+
             # Get original B&W image URL
             img_path = get_image_url(r)
-            
+
             parts.append('<div class="item">')
             parts.append('<div class="image-container">')
-            
+
             if img_path:
                 original_filename = Path(orig_path).name if orig_path else f"Image {i}"
                 parts.append(f'<img src="{esc(img_path)}" alt="{esc(original_filename)}" '
                            f'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\'">')
-                parts.append(f'<div style="display:none;width:360px;height:240px;background:#f0f0f0;'
-                           f'border:1px solid #ddd;border-radius:4px;align-items:center;'
-                           f'justify-content:center;color:#666;font-size:14px;flex-direction:column">Original image not found</div>')
+                parts.append('<div style="display:none;width:360px;height:240px;background:#f0f0f0;'
+                           'border:1px solid #ddd;border-radius:4px;align-items:center;'
+                           'justify-content:center;color:#666;font-size:14px;flex-direction:column">Original image not found</div>')
             else:
                 parts.append('<div style="width:360px;height:240px;background:#f0f0f0;'
                            'border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;'
                            'justify-content:center;color:#666;font-size:14px">Original image not available</div>')
-            
+
             parts.append("</div>")
             parts.append('<div class="meta">')
-            
+
             # Show original filename prominently
             if orig_path:
                 parts.append(f'<div class="path"><strong>📸 {esc(Path(orig_path).name)}</strong></div>')
-            
-            parts.append(f"<h3>{i}. Historical Photo Analysis</h3>")
+
+            # Show title with Gemma ranking if available
+            gemma_info = f" (Gemma Rank: #{r.get('gemma_rank')})" if r.get('gemma_rank') else ""
+            parts.append(f"<h3>{i}. Historical Photo Analysis{esc(gemma_info)}</h3>")
+
             if desc:
                 parts.append(f"<p>{esc(desc)}</p>")
-            
+
+            # Add ranking info
+            if r.get('gemma_rank'):
+                parts.append('<p style="font-size:0.85em;color:#0066cc;margin-top:10px;">'
+                           f'<strong>🤖 AI Relevance Ranking: #{r.get("gemma_rank")} most relevant</strong></p>')
+
             # Add note about original B&W photos
             parts.append('<p style="font-size:0.9em;color:#888;margin-top:15px;">'
                         '<em>Showing original black & white historical photograph</em></p>')
-            
+
             parts.append("</div>")
             parts.append("</div>")
 
         parts.append("</body></html>")
         out.write_text("\n".join(parts), encoding="utf-8")
+        return out
+
+
+class ChromaSearch:
+    """ChromaDB-based search functionality."""
+
+    def __init__(self, data_loader: DataLoader):
+        self.data_loader = data_loader
+        self.chroma_handler = None
+        self._initialize_chroma()
+
+    def _initialize_chroma(self) -> None:
+        """Initialize ChromaDB handler if available."""
+        if not is_chromadb_available():
+            print("⚠️  ChromaDB not available. Install with: pip install chromadb")
+            return
+
+        try:
+            self.chroma_handler = create_chroma_handler()
+            if self.chroma_handler:
+                print("✅ ChromaDB search initialized")
+            else:
+                print("❌ Failed to initialize ChromaDB handler")
+        except Exception as e:
+            print(f"❌ ChromaDB initialization error: {e}")
+
+    def is_available(self) -> bool:
+        """Check if ChromaDB search is available."""
+        return self.chroma_handler is not None
+
+    def semantic_search(self, query: str, n_results: int = 10,
+                        use_gemma_reranking: bool = True) -> List[Dict[str, Any]]:
+        """Perform semantic search using ChromaDB with optional Gemini reranking."""
+        if not self.chroma_handler:
+            print("❌ ChromaDB not available for search")
+            return []
+
+        try:
+            # Get more results for Gemini reranking (30) or requested amount
+            initial_k = min(
+                            30,
+                            670) if use_gemma_reranking else n_results  # 670 is total photos in ChromaD)
+            results = self.chroma_handler.search_photos(query, initial_k)
+            initial_results = self._format_chroma_results(results)
+
+            # Apply Gemini reranking if enabled and available
+            if use_gemma_reranking and len(initial_results) > n_results and GEMINI_AVAILABLE:
+                try:
+                    print("🤖 [CHROMADB DEBUG] Enhancing ChromaDB results with Gemini AI reranking...")
+                    print(f"🔍 [CHROMADB DEBUG] Initial ChromaDB results: {len(initial_results)}")
+                    print(f"🔍 [CHROMADB DEBUG] Requesting top {n_results} from Gemini")
+                    print(f"🔍 [CHROMADB DEBUG] Query: '{query}'")
+
+                    # Remove similarity scores and ChromaDB-specific fields for Gemini
+                    clean_results = []
+                    for result in initial_results:
+                        clean_result = result.copy()
+                        # Remove fields that might indicate ranking/scoring
+                        keys_to_remove = ['similarity_score', 'chromadb_result', 'id', 'metadata']
+                        for key in keys_to_remove:
+                            clean_result.pop(key, None)
+                        clean_results.append(clean_result)
+
+                    reranker = GemmaReranker()
+                    reranked_results = reranker.rerank_results(query, clean_results,
+                                                               top_k=n_results)
+
+                    print(f"✅ [CHROMADB DEBUG] Gemini reranking complete: {len(reranked_results)} results returned")
+
+                    # Show comparison between ChromaDB and Gemini ranking
+                    print("📊 [CHROMADB DEBUG] Ranking comparison:")
+                    for i in range(min(5, len(reranked_results))):
+                        filename = reranked_results[i].get('original_path', '').split('/')[-1]
+                        gemma_rank = reranked_results[i].get('gemma_rank', 'N/A')
+                        print(f"  Final #{i + 1}: {filename} (was Gemini rank #{gemma_rank})")
+
+                    return reranked_results
+
+                except ValueError as e:
+                    if "GEMINI_API_KEY" in str(e):
+                        print("❌ [CHROMADB DEBUG] Gemini reranking disabled: Missing GEMINI_API_KEY in .env file")
+                    else:
+                        print(f"❌ [CHROMADB DEBUG] Gemini reranking error: {e}")
+                    print("📋 [CHROMADB DEBUG] Continuing with ChromaDB results only")
+                except Exception as e:
+                    print(f"❌ [CHROMADB DEBUG] Gemini reranking failed: {e}")
+                    print(f"❌ [CHROMADB DEBUG] Exception type: {type(e).__name__}")
+                    import traceback
+                    print("❌ [CHROMADB DEBUG] Full traceback:")
+                    traceback.print_exc()
+                    print("📋 [CHROMADB DEBUG] Continuing with ChromaDB results only")
+            elif use_gemma_reranking and not GEMINI_AVAILABLE:
+                print("⚠️  [CHROMADB DEBUG] Gemini reranking module not available - using ChromaDB results only")
+
+            # Fallback to original ChromaDB ranking
+            return initial_results[:n_results]
+
+        except Exception as e:
+            print(f"❌ ChromaDB semantic search failed: {e}")
+            return []
+
+    def category_search(self, category: str, value: Any = True,
+                        n_results: int = 50) -> List[Dict[str, Any]]:
+        """Search by category using ChromaDB metadata filtering."""
+        if not self.chroma_handler:
+            print("❌ ChromaDB not available for search")
+            return []
+
+        try:
+            results = self.chroma_handler.search_by_category(category, value, n_results)
+            return self._format_chroma_results(results)
+        except Exception as e:
+            print(f"❌ ChromaDB category search failed: {e}")
+            return []
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get ChromaDB collection statistics."""
+        if not self.chroma_handler:
+            return {'total_photos': 0, 'error': 'ChromaDB not available', 'available': False}
+
+        try:
+            stats = self.chroma_handler.get_collection_stats()
+            stats['available'] = True
+            return stats
+        except Exception as e:
+            return {'total_photos': 0, 'error': str(e), 'available': False}
+
+    def _format_chroma_results(self, results: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Format ChromaDB results into a consistent structure."""
+        formatted_results: List[Dict[str, Any]] = []
+
+        if not results.get('documents') or not results['documents'][0]:
+            return formatted_results
+
+        documents = results['documents'][0]
+        metadatas = results.get('metadatas', [[]])[0]
+        ids = results.get('ids', [[]])[0]
+        distances = (results.get('distances', [[]])[0] if results.get('distances')
+                     else [0.0] * len(documents))
+
+        for _i, (doc, metadata, result_id, distance) in enumerate(
+                zip(documents, metadatas, ids, distances)):
+            formatted_result = {
+                'id': result_id,
+                'description': doc,
+                'original_path': metadata.get('original_path', ''),
+                'text_description': doc,  # For compatibility with existing gallery code
+                'similarity_score': 1 - distance if distance is not None else 1.0,
+                'metadata': metadata,
+                'chromadb_result': True  # Flag to identify ChromaDB results
+            }
+            formatted_results.append(formatted_result)
+
+        return formatted_results
+
+    def write_chroma_gallery(self, query: str,
+                             results: List[Dict[str, Any]],
+                             search_type: str = "semantic") -> Path:
+        """Write ChromaDB search results as HTML gallery."""
+        self.data_loader.output_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = self.data_loader.output_dir / f"chroma_{search_type}_{ts}.html"
+
+        def esc(t: str) -> str:
+            return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+        def get_image_url(row: Dict[str, str]) -> str:
+            """Get base64 data URL for original image from CSV path."""
+            orig_path = row.get('original_path', '')
+            if not orig_path:
+                return ""
+
+            # Get absolute path from CSV relative path
+            project_root = self.data_loader.output_dir.parent.parent
+            source_path = project_root / orig_path
+
+            if not source_path.exists():
+                return ""
+
+            # Read image and convert to base64 data URL
+            try:
+                with open(source_path, 'rb') as f:
+                    image_data = f.read()
+                b64_data = base64.b64encode(image_data).decode()
+                ext = source_path.suffix.lower()
+                mime = 'image/jpeg' if ext in ['.jpg', '.jpeg'] else 'image/png'
+                return f"data:{mime};base64,{b64_data}"
+            except Exception:
+                return ""
+
+        parts: List[str] = []
+        parts.append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
+        title = f"ChromaDB {search_type.title()} Search Results"
+        parts.append(f"<title>{esc(title)}</title>")
+        parts.append("<style>")
+        parts.append("body{font-family:Arial,Helvetica,sans-serif;margin:20px}")
+        parts.append(".header{background:#f5f5f5;padding:15px;border-radius:8px;margin-bottom:20px}")
+        parts.append(".item{margin-bottom:30px;display:flex;gap:16px;align-items:flex-start;border:1px solid #eee;border-radius:8px;padding:15px}")
+        parts.append(".image-container{flex-shrink:0}")
+        parts.append("img{max-width:360px;height:auto;border:1px solid #ddd;border-radius:4px}")
+        parts.append(".meta{max-width:800px;padding-left:10px}")
+        parts.append(".path{font-size:0.9em;color:#666;margin-bottom:10px}")
+        parts.append(".similarity-score{color:#0066cc;font-weight:bold;margin-top:10px}")
+        parts.append(".chroma-badge{background:#4CAF50;color:white;padding:3px 8px;border-radius:12px;font-size:0.8em;display:inline-block}")
+        parts.append("</style>")
+        parts.append("</head><body>")
+
+        # Header with statistics
+        parts.append('<div class="header">')
+        parts.append(f"<h2>{esc(title)}</h2>")
+        if search_type == "semantic":
+            parts.append(f"<p><strong>Query:</strong> {esc(query)}</p>")
+        parts.append(f"<p><strong>Results:</strong> {len(results)} photos found</p>")
+        parts.append('<span class="chroma-badge">🔍 ChromaDB Vector Search</span>')
+        parts.append('</div>')
+
+        for i, r in enumerate(results, 1):
+            orig_path = r.get('original_path', '')
+            desc = r.get('description', '')
+            similarity = r.get('similarity_score', 0.0)
+
+            # Get original image URL
+            img_path = get_image_url(r)
+
+            parts.append('<div class="item">')
+            parts.append('<div class="image-container">')
+
+            if img_path:
+                filename = Path(orig_path).name if orig_path else f"Image {i}"
+                parts.append(f'<img src="{esc(img_path)}" alt="{esc(filename)}" '
+                           f'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\'">')
+                parts.append('<div style="display:none;width:360px;height:240px;background:#f0f0f0;'
+                           'border:1px solid #ddd;border-radius:4px;align-items:center;'
+                           'justify-content:center;color:#666;font-size:14px;flex-direction:column">'
+                           'Original image not found</div>')
+            else:
+                parts.append('<div style="width:360px;height:240px;background:#f0f0f0;'
+                           'border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;'
+                           'justify-content:center;color:#666;font-size:14px">Original image not available</div>')
+
+            parts.append("</div>")
+            parts.append('<div class="meta">')
+
+            # Show original filename prominently
+            if orig_path:
+                filename = Path(orig_path).name
+                parts.append(f'<div class="path"><strong>📸 {esc(filename)}</strong></div>')
+
+            parts.append(f"<h3>{i}. Historical Photo Analysis</h3>")
+
+            if desc:
+                parts.append(f"<p>{esc(desc)}</p>")
+
+            # Show similarity score
+            if search_type == "semantic":
+                parts.append(f'<div class="similarity-score">🎯 Similarity: {similarity:.3f}</div>')
+
+            # Show metadata if available
+            metadata = r.get('metadata', {})
+            if metadata:
+                meta_info = []
+                if metadata.get('has_jewish_symbols'):
+                    meta_info.append("✡️ Jewish symbols")
+                if metadata.get('has_nazi_symbols'):
+                    meta_info.append("🚩 Nazi symbols")
+                if metadata.get('has_hebrew_text'):
+                    meta_info.append("📜 Hebrew text")
+                if metadata.get('has_german_text'):
+                    meta_info.append("📄 German text")
+                if metadata.get('signs_of_violence'):
+                    meta_info.append("⚠️ Violence indicators")
+
+                if meta_info:
+                    parts.append(f'<p><strong>Content:</strong> {", ".join(meta_info)}</p>')
+
+                # Show people counts
+                total_people = metadata.get('total_people', 0)
+                if total_people > 0:
+                    men = metadata.get('men_count', 0)
+                    women = metadata.get('women_count', 0)
+                    parts.append(
+                        f'<p><strong>People:</strong> {total_people} total '
+                        f'({men} men, {women} women)</p>')
+
+            parts.append('<p style="font-size:0.9em;color:#888;margin-top:15px;">'
+                        '<em>Showing original historical photograph from ChromaDB vector search</em></p>')
+            parts.append("</div>")
+            parts.append("</div>")
+
+        parts.append("</body></html>")
+
+        with open(out, "w", encoding="utf-8") as f:
+            f.write("".join(parts))
+
         return out
 
 
@@ -542,6 +1006,7 @@ class DashboardPipeline:
         self.data_loader = DataLoader(results_dir)
         self.category_search = CategorySearch(self.data_loader)
         self.semantic_search = SemanticSearch(self.data_loader)
+        self.chroma_search = ChromaSearch(self.data_loader)
 
     def run_category_search(self) -> None:
         """Run interactive category search."""
@@ -566,7 +1031,7 @@ class DashboardPipeline:
         out_html = self.category_search.write_gallery(cat, rows)
         print(f"\nWrote report: {out_txt}")
         print(f"Wrote gallery: {out_html}")
-        
+
         # Open HTML gallery in browser
         try:
             webbrowser.open(f"file://{out_html.absolute()}")
@@ -576,7 +1041,7 @@ class DashboardPipeline:
 
     def run_semantic_search(self) -> None:
         """Run interactive semantic search."""
-        print("Semantic search (MiniLM-L6). Type your query.")
+        print("Semantic search (MiniLM-L6 + Gemini AI reranking). Type your query.")
         query = input("Query: ").strip()
         if not query:
             print("Empty query")
@@ -588,12 +1053,20 @@ class DashboardPipeline:
         except ValueError:
             k_int = 5
 
-        try:
-            results, num_above = self.semantic_search.search(query, k=k_int)
+        # Automatically use Gemini reranking (will fallback if not available)
+        use_gemma = True
 
-            print(f"\nFound {num_above} items above similarity threshold. Top {len(results)} matches:\n")
+        try:
+            results, num_above = self.semantic_search.search(
+                query, k=k_int, use_gemma_reranking=use_gemma)
+
+            # Show results with ranking info
+            ranking_info = " (Gemma AI reranked)" if use_gemma and any('gemma_rank' in r for r in results) else " (MiniLM ranking)"
+            print(f"\nFound {num_above} items above similarity threshold. Top {len(results)} matches{ranking_info}:\n")
+
             for i, r in enumerate(results, 1):
-                print(f"{i}. {r.get('original_path', '')}")
+                gemma_rank = f" [Gemma: #{r['gemma_rank']}]" if r.get('gemma_rank') else ""
+                print(f"{i}. {r.get('original_path', '')}{gemma_rank}")
                 desc = r.get('description', '')
                 if desc:
                     print(f"   {desc}")
@@ -603,13 +1076,16 @@ class DashboardPipeline:
             out_html = self.semantic_search.write_gallery(query, results)
             print(f"Wrote report: {out_txt}")
             print(f"Wrote gallery: {out_html}")
-            
+
             # Open HTML gallery in browser
             try:
                 webbrowser.open(f"file://{out_html.absolute()}")
                 print("✅ Gallery opened in browser")
             except Exception as e:
                 print(f"⚠️  Could not open browser: {e}")
+
+            # Ask if user wants to see similar photos using CLIP
+            self._ask_for_clip_similarities(results)
 
         except FileNotFoundError as e:
             print(f"Error: {e}")
@@ -620,6 +1096,598 @@ class DashboardPipeline:
     def build_embeddings(self) -> None:
         """Build embeddings for semantic search."""
         self.semantic_search.build_embeddings()
+
+    def _ask_for_clip_similarities(self, results: List[Dict[str, str]]) -> None:
+        """Ask user if they want to see CLIP-based similar photos"""
+        if not results:
+            return
+
+        # Check if CLIP embeddings are available
+        status = get_embeddings_status()
+        if not status['embeddings_ready']:
+            print("\n🔍 CLIP similarity search not available (run generate_clip_embeddings.py first)")
+            return
+
+        print("\n🔍 Do you want to see similar photos using CLIP AI analysis?")
+        choice = input("See similar photos? (y/n): ").strip().lower()
+
+        if choice in ['y', 'yes']:
+            self._run_clip_similarity_search(results)
+
+    def _run_clip_similarity_search(self, results: List[Dict[str, str]]) -> None:
+        """Run CLIP similarity search on semantic search results"""
+        print("\nCLIP Similarity Options:")
+        print("1) Visual similarity only (based on image content)")
+        print("2) Combined visual + text similarity (best of both)")
+
+        sim_choice = input("Choose similarity type (1-2): ").strip()
+
+        # Ask for number of similar photos
+        num_input = input("Number of similar photos per result (1-10, default 5): ").strip() or '5'
+        try:
+            num_similar = min(10, max(1, int(num_input)))
+        except ValueError:
+            num_similar = 5
+
+        if sim_choice == '1':
+            self._generate_visual_similarity_gallery(results, num_similar)
+        elif sim_choice == '2':
+            self._generate_combined_similarity_gallery(results, num_similar)
+        else:
+            print("Invalid choice")
+
+    def _generate_visual_similarity_gallery(
+                                            self,
+                                            results: List[Dict[str,
+                                            str]],
+                                            num_similar: int) -> None:
+        """Generate gallery showing visual similarities"""
+        print(f"\n🖼️ Generating visual similarity gallery with {num_similar} similar photos per result...")
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = self.data_loader.output_dir / f"visual_similarity_{ts}.html"
+
+        # Generate the HTML with visual similarities
+        html_content = self._build_similarity_html(
+                                                   results,
+                                                   num_similar,
+                                                   "visual",
+                                                   "Visual Similarity")
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"✅ Visual similarity gallery: {out_path}")
+
+        # Open in browser
+        try:
+            webbrowser.open(f"file://{out_path.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"⚠️  Could not open browser: {e}")
+
+    def _generate_combined_similarity_gallery(
+                                              self,
+                                              results: List[Dict[str,
+                                              str]],
+                                              num_similar: int) -> None:
+        """Generate gallery showing combined visual+text similarities"""
+        print(f"\n🎯 Generating combined similarity gallery with {num_similar} similar photos per result...")
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = self.data_loader.output_dir / f"combined_similarity_{ts}.html"
+
+        # Generate the HTML with combined similarities
+        html_content = self._build_similarity_html(
+                                                   results,
+                                                   num_similar,
+                                                   "combined",
+                                                   "Combined Visual + Text Similarity")
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"✅ Combined similarity gallery: {out_path}")
+
+        # Open in browser
+        try:
+            webbrowser.open(f"file://{out_path.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"⚠️  Could not open browser: {e}")
+
+    def _build_similarity_html(
+                               self,
+                               results: List[Dict[str,
+                               str]],
+                               num_similar: int,
+                               similarity_type: str,
+                               title: str) -> str:
+        """Build HTML content for similarity galleries"""
+        def esc(t: str) -> str:
+            return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+        def get_image_url(row_path: str) -> str:
+            """Get base64 data URL for image"""
+            if not row_path:
+                return ""
+
+            # Get absolute path from CSV relative path
+            project_root = self.data_loader.output_dir.parent.parent
+            source_path = project_root / row_path
+
+            if not source_path.exists():
+                return ""
+
+            try:
+                with open(source_path, 'rb') as f:
+                    image_data = f.read()
+                b64_data = base64.b64encode(image_data).decode()
+                ext = source_path.suffix.lower()
+                mime = 'image/jpeg' if ext in ['.jpg', '.jpeg'] else 'image/png'
+                return f"data:{mime};base64,{b64_data}"
+            except Exception:
+                return ""
+
+        parts = [
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\">",
+            f"<title>{esc(title)}</title>",
+            "<style>",
+            "body{font-family:Arial,Helvetica,sans-serif;margin:20px}",
+            ".main-result{margin-bottom:50px;border-bottom:2px solid #eee;padding-bottom:30px}",
+            ".original-photo{margin-bottom:20px}",
+            ".similarities{margin-left:20px}",
+            ".similarity-grid{display:grid;grid-template-columns:"
+            "repeat(auto-fit,minmax(200px,1fr));gap:15px}",
+            ".similarity-item{border:1px solid #ddd;border-radius:8px;padding:10px;background:#f9f9f9}",
+            "img{max-width:100%;height:auto;border-radius:4px}",
+            ".score{font-weight:bold;color:#0066cc;font-size:0.9em}",
+            ".filename{font-size:0.8em;color:#666;margin-top:5px}",
+            "h2{color:#333;border-bottom:1px solid #ccc;padding-bottom:5px}",
+            "h3{color:#666;margin-top:20px}",
+            "</style>",
+            "</head><body>",
+            f"<h1>{esc(title)}</h1>",
+            f"<p>Showing {num_similar} most similar photos for each search result.</p>"
+        ]
+
+        for i, result in enumerate(results, 1):
+            original_path = result.get('original_path', '')
+            desc = result.get('description', '')
+
+            parts.append('<div class="main-result">')
+            parts.append('<div class="original-photo">')
+            parts.append(f"<h2>{i}. Original: {esc(Path(original_path).name if original_path else 'Unknown')}</h2>")
+
+            # Show original image
+            img_url = get_image_url(original_path)
+            if img_url:
+                parts.append(f'<img src="{esc(img_url)}" alt="Original" style="max-width:400px">')
+            else:
+                parts.append('<div style="width:400px;height:300px;background:#f0f0f0;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;color:#666">Original image not available</div>')
+
+            if desc:
+                parts.append(f"<p><strong>Description:</strong> {esc(desc)}</p>")
+
+            parts.append("</div>")
+
+            # Get similar photos
+            if similarity_type == "visual":
+                similar_photos = get_visual_similarities(original_path, num_similar)
+                parts.append(f"<h3>🖼️ Visually Similar Photos (Top {num_similar})</h3>")
+            else:  # combined
+                similar_photos = get_combined_similarities(original_path, num_similar)
+                parts.append(f"<h3>🎯 Combined Visual + "
+                             f"Text Similar Photos (Top {num_similar})</h3>")
+
+            if similar_photos:
+                parts.append('<div class="similarities">')
+                parts.append('<div class="similarity-grid">')
+
+                for _j, sim in enumerate(similar_photos, 1):
+                    sim_path = sim['path']
+                    sim_score = sim['similarity_score']
+                    sim_filename = sim['filename']
+                    sim_img_url = get_image_url(sim_path)
+
+                    parts.append('<div class="similarity-item">')
+                    if sim_img_url:
+                        parts.append(f'<img src="{esc(sim_img_url)}" alt="{esc(sim_filename)}">')
+                    else:
+                        parts.append('<div style="width:100%;height:150px;background:#f0f0f0;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px">Image not available</div>')
+
+                    parts.append(f'<div class="score">Similarity: {sim_score:.3f}</div>')
+                    parts.append(f'<div class="filename">{esc(sim_filename)}</div>')
+                    parts.append('</div>')
+
+                parts.append('</div>')
+                parts.append('</div>')
+            else:
+                parts.append('<p><em>No similar photos found.</em></p>')
+
+            parts.append('</div>')
+
+        parts.append("</body></html>")
+        return "".join(parts)
+
+    def run_chroma_semantic_search(self) -> None:
+        """Run ChromaDB-based semantic search."""
+        if not self.chroma_search.is_available():
+            print("❌ ChromaDB search is not available.")
+            print("   Make sure ChromaDB is installed: pip install chromadb")
+            print("   And that you have processed photos with ChromaDB storage enabled.")
+            return
+
+        stats = self.chroma_search.get_stats()
+        print(f"📊 ChromaDB contains {stats.get('total_photos', 0)} photos")
+
+        print("\n🔍 ChromaDB Semantic Search (Vector Database)")
+        query = input("Enter search query: ").strip()
+        if not query:
+            print("Empty query")
+            return
+
+        k_input = input("Top K results (1/5/10/20): ").strip() or '10'
+        try:
+            k_int = min(50, max(1, int(k_input)))
+        except ValueError:
+            k_int = 10
+
+        print(f"\n🔍 Searching ChromaDB for: '{query}'...")
+        results = self.chroma_search.semantic_search(query, k_int)
+
+        if not results:
+            print("❌ No results found")
+            return
+
+        print(f"\n🎯 Found {len(results)} results from ChromaDB:")
+        for i, r in enumerate(results, 1):
+            similarity = r.get('similarity_score', 0.0)
+            orig_path = r.get('original_path', 'Unknown')
+            filename = Path(orig_path).name if orig_path else f"Result {i}"
+            print(f"{i}. {filename} (similarity: {similarity:.3f})")
+
+            desc = r.get('description', '')
+            if desc and len(desc) > 100:
+                print(f"   {desc[:100]}...")
+            elif desc:
+                print(f"   {desc}")
+
+        # Generate and open gallery
+        try:
+            out_html = self.chroma_search.write_chroma_gallery(query, results, "semantic")
+            print(f"\n📄 Gallery saved: {out_html}")
+
+            # Open in browser
+            webbrowser.open(f"file://{out_html.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"❌ Failed to generate gallery: {e}")
+
+        # Ask if user wants to see CLIP-based similar photos
+        self._ask_for_chroma_clip_similarities(results, search_type="semantic")
+
+    def run_chroma_category_search(self) -> None:
+        """Run ChromaDB-based category search."""
+        if not self.chroma_search.is_available():
+            print("❌ ChromaDB search is not available.")
+            return
+
+        stats = self.chroma_search.get_stats()
+        print(f"📊 ChromaDB contains {stats.get('total_photos', 0)} photos")
+
+        print("\n🏷️  ChromaDB Category Search")
+        print("Available categories:")
+        categories = {
+            "1": ("has_jewish_symbols", "Photos with Jewish symbols"),
+            "2": ("has_nazi_symbols", "Photos with Nazi symbols"),
+            "3": ("has_hebrew_text", "Photos with Hebrew text"),
+            "4": ("has_german_text", "Photos with German text"),
+            "5": ("signs_of_violence", "Photos with violence indicators"),
+            "6": ("indoor_outdoor", "Indoor photos"),
+            "7": ("indoor_outdoor", "Outdoor photos")
+        }
+
+        for key, (_, desc) in categories.items():
+            print(f"{key}) {desc}")
+
+        choice = input("Select category (1-7): ").strip()
+        if choice not in categories:
+            print("Invalid choice")
+            return
+
+        category_field, category_desc = categories[choice]
+
+        # Handle indoor/outdoor special case
+        if category_field == "indoor_outdoor":
+            value = "indoor" if choice == "6" else "outdoor"
+        else:
+            value = True
+
+        print(f"\n🔍 Searching for: {category_desc}...")
+        results = self.chroma_search.category_search(category_field, value, 50)
+
+        if not results:
+            print(f"❌ No results found for {category_desc}")
+            return
+
+        print(f"\n🎯 Found {len(results)} photos with {category_desc.lower()}:")
+        for i, r in enumerate(results[:10], 1):  # Show first 10 in console
+            orig_path = r.get('original_path', 'Unknown')
+            filename = Path(orig_path).name if orig_path else f"Result {i}"
+            print(f"{i}. {filename}")
+
+        if len(results) > 10:
+            print(f"... and {len(results) - 10} more results")
+
+        # Generate and open gallery
+        try:
+            out_html = self.chroma_search.write_chroma_gallery(category_desc, results, "category")
+            print(f"\n📄 Gallery saved: {out_html}")
+
+            # Open in browser
+            webbrowser.open(f"file://{out_html.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"❌ Failed to generate gallery: {e}")
+
+        # Ask if user wants to see CLIP-based similar photos
+        self._ask_for_chroma_clip_similarities(results, search_type="category")
+
+    def get_chroma_stats(self) -> None:
+        """Display ChromaDB statistics."""
+        if not self.chroma_search.is_available():
+            print("❌ ChromaDB is not available")
+            print("   Install with: pip install chromadb")
+            return
+
+        stats = self.chroma_search.get_stats()
+        print("📊 ChromaDB Statistics:")
+        print(f"   Total photos: {stats.get('total_photos', 0)}")
+        print(f"   Collection: {stats.get('collection_name', 'unknown')}")
+        print(f"   Storage: {stats.get('persist_directory', 'unknown')}")
+
+        if 'error' in stats:
+            print(f"   Error: {stats['error']}")
+        else:
+            print("   Status: ✅ Ready")
+
+    def _ask_for_chroma_clip_similarities(
+                                          self,
+                                          results: List[Dict[str,
+                                          Any]],
+                                          search_type: str = "semantic") -> None:
+        """Ask user if they want to see CLIP-based similar photos for ChromaDB results"""
+        if not results:
+            return
+
+        # Check if CLIP embeddings are available
+        status = get_embeddings_status()
+        if not status['embeddings_ready']:
+            print("\n🔍 CLIP similarity search not available (run generate_clip_embeddings.py first)")
+            return
+
+        print("\n🔍 Do you want to see similar photos using CLIP AI analysis?")
+        choice = input("See similar photos? (y/n): ").strip().lower()
+
+        if choice in ['y', 'yes']:
+            self._run_chroma_clip_similarity_search(results, search_type)
+
+    def _run_chroma_clip_similarity_search(
+                                           self,
+                                           results: List[Dict[str,
+                                           Any]],
+                                           search_type: str) -> None:
+        """Run CLIP similarity search on ChromaDB results"""
+        print("\nCLIP Similarity Options:")
+        print("1) Visual similarity only (based on image content)")
+        print("2) Combined visual + text similarity (best of both)")
+
+        sim_choice = input("Choose similarity type (1-2): ").strip()
+
+        # Ask for number of similar photos
+        num_input = input("Number of similar photos per result (1-10, default 5): ").strip() or '5'
+        try:
+            num_similar = min(10, max(1, int(num_input)))
+        except ValueError:
+            num_similar = 5
+
+        if sim_choice == '1':
+            self._generate_chroma_visual_similarity_gallery(results, num_similar, search_type)
+        elif sim_choice == '2':
+            self._generate_chroma_combined_similarity_gallery(results, num_similar, search_type)
+        else:
+            print("Invalid choice")
+
+    def _generate_chroma_visual_similarity_gallery(
+                                                   self,
+                                                   results: List[Dict[str,
+                                                   Any]],
+                                                   num_similar: int,
+                                                   search_type: str) -> None:
+        """Generate gallery showing visual similarities for ChromaDB results"""
+        print(f"\n🖼️ Generating visual similarity gallery with {num_similar} similar photos per result...")
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = self.data_loader.output_dir / f"chroma_{search_type}_visual_similarity_{ts}.html"
+
+        # Generate the HTML with visual similarities
+        html_content = self._build_chroma_similarity_html(results, num_similar, "visual",
+                                                         f"ChromaDB {search_type.title()} + Visual Similarity")
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"✅ Visual similarity gallery: {out_path}")
+
+        # Open in browser
+        try:
+            webbrowser.open(f"file://{out_path.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"⚠️  Could not open browser: {e}")
+
+    def _generate_chroma_combined_similarity_gallery(
+                                                     self,
+                                                     results: List[Dict[str,
+                                                     Any]],
+                                                     num_similar: int,
+                                                     search_type: str) -> None:
+        """Generate gallery showing combined visual+text similarities for ChromaDB results"""
+        print(f"\n🎯 Generating combined similarity gallery with {num_similar} similar photos per result...")
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = self.data_loader.output_dir / f"chroma_{search_type}_combined_similarity_{ts}.html"
+
+        # Generate the HTML with combined similarities
+        html_content = self._build_chroma_similarity_html(results, num_similar, "combined",
+                                                         f"ChromaDB {search_type.title()} + Combined Visual + Text Similarity")
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"✅ Combined similarity gallery: {out_path}")
+
+        # Open in browser
+        try:
+            webbrowser.open(f"file://{out_path.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"⚠️  Could not open browser: {e}")
+
+    def _build_chroma_similarity_html(
+                                      self,
+                                      results: List[Dict[str,
+                                      Any]],
+                                      num_similar: int,
+                                      similarity_type: str,
+                                      title: str) -> str:
+        """Build HTML content for ChromaDB similarity galleries"""
+        def esc(t: str) -> str:
+            return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+        def get_image_url(row_path: str) -> str:
+            """Get base64 data URL for image"""
+            if not row_path:
+                return ""
+
+            # Get absolute path from CSV relative path
+            project_root = self.data_loader.output_dir.parent.parent
+            source_path = project_root / row_path
+
+            if not source_path.exists():
+                return ""
+
+            try:
+                with open(source_path, 'rb') as f:
+                    image_data = f.read()
+                b64_data = base64.b64encode(image_data).decode()
+                ext = source_path.suffix.lower()
+                mime = 'image/jpeg' if ext in ['.jpg', '.jpeg'] else 'image/png'
+                return f"data:{mime};base64,{b64_data}"
+            except Exception:
+                return ""
+
+        parts = [
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\">",
+            f"<title>{esc(title)}</title>",
+            "<style>",
+            "body{font-family:Arial,Helvetica,sans-serif;margin:20px}",
+            ".header{background:#f5f5f5;padding:15px;border-radius:8px;margin-bottom:20px;border:2px solid #4CAF50}",
+            ".chroma-badge{background:#4CAF50;color:white;padding:5px 12px;border-radius:15px;font-size:0.9em;display:inline-block;margin-bottom:10px}",
+            ".main-result{margin-bottom:50px;border-bottom:2px solid #eee;padding-bottom:30px}",
+            ".original-photo{margin-bottom:20px;background:#fafafa;padding:15px;border-radius:8px}",
+            ".similarities{margin-left:20px}",
+            ".similarity-grid{display:grid;grid-template-columns:"
+            "repeat(auto-fit,minmax(200px,1fr));gap:15px}",
+            ".similarity-item{border:1px solid #ddd;border-radius:8px;padding:10px;background:#f9f9f9}",
+            "img{max-width:100%;height:auto;border-radius:4px}",
+            ".score{font-weight:bold;color:#0066cc;font-size:0.9em}",
+            ".filename{font-size:0.8em;color:#666;margin-top:5px}",
+            ".description{font-size:0.9em;margin:10px 0;color:#444}",
+            "h2{color:#333;border-bottom:1px solid #ccc;padding-bottom:5px}",
+            "h3{color:#666;margin-top:20px}",
+            "</style>",
+            "</head><body>",
+            '<div class="header">',
+            '<span class="chroma-badge">🔍 ChromaDB Vector Search</span>',
+            f"<h1>{esc(title)}</h1>",
+            f"<p><strong>Showing {num_similar} most similar photos for each ChromaDB search result.</strong></p>",
+            '</div>'
+        ]
+
+        for i, result in enumerate(results, 1):
+            original_path = result.get('original_path', '')
+            desc = result.get('description', '') or result.get('text_description', '')
+            similarity_score = result.get('similarity_score', 0.0)
+
+            parts.append('<div class="main-result">')
+            parts.append('<div class="original-photo">')
+            parts.append(f"<h2>{i}. ChromaDB Result: {esc(Path(original_path).name if original_path else 'Unknown')}</h2>")
+
+            # Show ChromaDB similarity score if available
+            if similarity_score > 0:
+                parts.append(f'<p><strong>ChromaDB Similarity:</strong> {similarity_score:.3f}</p>')
+
+            # Show original image
+            img_url = get_image_url(original_path)
+            if img_url:
+                parts.append(f'<img src="{esc(img_url)}" alt="Original" style="max-width:400px">')
+            else:
+                parts.append('<div style="width:400px;height:300px;background:#f0f0f0;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;color:#666">Original image not available</div>')
+
+            if desc:
+                parts.append(f'<div class="description"><strong>Description:</strong> {esc(desc)}</div>')
+
+            parts.append("</div>")
+
+            # Get similar photos using CLIP
+            if similarity_type == "visual":
+                similar_photos = get_visual_similarities(original_path, num_similar)
+                parts.append(f"<h3>🖼️ Visually Similar Photos (Top {num_similar})</h3>")
+            else:  # combined
+                similar_photos = get_combined_similarities(original_path, num_similar)
+                parts.append(f"<h3>🎯 Combined Visual + "
+                             f"Text Similar Photos (Top {num_similar})</h3>")
+
+            if similar_photos:
+                parts.append('<div class="similarities">')
+                parts.append('<div class="similarity-grid">')
+
+                for _j, sim in enumerate(similar_photos, 1):
+                    sim_path = sim['path']
+                    sim_score = sim['similarity_score']
+                    sim_filename = sim['filename']
+                    sim_img_url = get_image_url(sim_path)
+
+                    parts.append('<div class="similarity-item">')
+                    if sim_img_url:
+                        parts.append(f'<img src="{esc(sim_img_url)}" alt="{esc(sim_filename)}">')
+                    else:
+                        parts.append('<div style="width:100%;height:150px;background:#f0f0f0;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px">Image not available</div>')
+
+                    parts.append(f'<div class="score">CLIP Similarity: {sim_score:.3f}</div>')
+                    parts.append(f'<div class="filename">{esc(sim_filename)}</div>')
+                    parts.append('</div>')
+
+                parts.append('</div>')
+                parts.append('</div>')
+            else:
+                parts.append('<p><em>No similar photos found via CLIP analysis.</em></p>')
+
+            parts.append('</div>')
+
+        parts.extend([
+            '<div style="margin-top:30px;padding:15px;background:#f0f8ff;border-radius:8px;border-left:4px solid #0066cc">',
+            '<h3>🤖 AI Analysis Combination</h3>',
+            '<p><strong>ChromaDB:</strong> Found initial results using vector semantic search</p>',
+            '<p><strong>CLIP:</strong> Found visually similar photos using computer vision analysis</p>',
+            '<p>This combination provides both semantically relevant and visually similar historical photographs.</p>',
+            '</div>',
+            "</body></html>"
+        ])
+
+        return "".join(parts)
 
 
 def main() -> None:
@@ -637,15 +1705,24 @@ def main() -> None:
             pipeline.run_semantic_search()
         elif command == "build_embeddings":
             pipeline.build_embeddings()
+        elif command == "chroma_semantic":
+            pipeline.run_chroma_semantic_search()
+        elif command == "chroma_category":
+            pipeline.run_chroma_category_search()
+        elif command == "chroma_stats":
+            pipeline.get_chroma_stats()
         else:
-            print("Usage: python dashboard_pipeline.py [category|semantic|build_embeddings]")
+            print("Usage: python dashboard_pipeline.py [category|semantic|build_embeddings|chroma_semantic|chroma_category|chroma_stats]")
     else:
         print("Dashboard Pipeline")
         print("Available commands:")
-        print("1) category - Run category-based search")
-        print("2) semantic - Run semantic search")
+        print("1) category - Run category-based search (CSV)")
+        print("2) semantic - Run semantic search (MiniLM)")
         print("3) build_embeddings - Build embeddings for semantic search")
-        choice = input("Enter command: ").strip().lower()
+        print("4) chroma_semantic - Run ChromaDB semantic search")
+        print("5) chroma_category - Run ChromaDB category search")
+        print("6) chroma_stats - Show ChromaDB statistics")
+        choice = input("Enter command (1-6): ").strip().lower()
 
         if choice in ["1", "category"]:
             pipeline.run_category_search()
@@ -653,6 +1730,12 @@ def main() -> None:
             pipeline.run_semantic_search()
         elif choice in ["3", "build_embeddings"]:
             pipeline.build_embeddings()
+        elif choice in ["4", "chroma_semantic"]:
+            pipeline.run_chroma_semantic_search()
+        elif choice in ["5", "chroma_category"]:
+            pipeline.run_chroma_category_search()
+        elif choice in ["6", "chroma_stats"]:
+            pipeline.get_chroma_stats()
         else:
             print("Invalid choice")
 

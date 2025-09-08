@@ -30,8 +30,13 @@ def run_pipeline(
     output_path = Path(output_dir)
     colorized_dir = output_path / "colorized"
     results_dir = output_path / "results"
+    processed_dir = output_path / "processed_photos"
     colorized_dir.mkdir(parents=True, exist_ok=True)
     results_dir.mkdir(parents=True, exist_ok=True)
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    # File deletion proposal list (do not delete automatically)
+    files_to_delete_path = output_path / "files_to_delete.txt"
 
     # 1) Colorize
     colorizer = Colorizer(models_dir=models_dir)
@@ -42,9 +47,9 @@ def run_pipeline(
     print("3) All photos")
     choice = input("Enter 1, 2, or 3: ").strip()
 
-    # Collect candidates
+    # Collect candidates (recursive)
     exts = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".JPG", ".JPEG", ".PNG"]
-    all_files = [str(p) for p in sorted(input_path.iterdir()) if p.suffix in exts and p.is_file()]
+    all_files = [str(p) for p in sorted(input_path.rglob("*")) if p.suffix in exts and p.is_file()]
 
     import random
     selected: List[str]
@@ -167,7 +172,9 @@ def run_pipeline(
                     if wait_s > 0:
                         time.sleep(wait_s)
                 print("\n\n--- LLM INTERPRETATION (Groq) ---\n")
-                orig_image_path = str(input_path / orig_name)
+                # Support absolute or relative paths
+                from pathlib import Path as _P
+                orig_image_path = orig_name if _P(orig_name).is_absolute() else str(input_path / orig_name)
                 llm_output_path = str((results_dir / f"llm_{Path(orig_image_path).stem}_orig.json"))
                 llm_response = llm.analyze(orig_image_path, save_path=llm_output_path)
                 # Attach to record so summary can include it
@@ -193,6 +200,30 @@ def run_pipeline(
             army_det = yolo_army.analyze_image(color_path)
             clip_section["army"] = any(v > 0 for v in army_det.get("object_counts", {}).values())
             clip_section["army_objects"] = army_det.get("object_counts", {})
+
+        # Prepare original paths and persist a single B&W copy under processed_photos
+        from pathlib import Path as _P
+        orig_full_path = orig_name if _P(orig_name).is_absolute() else str(input_path / orig_name)
+        processed_copy_path = str(processed_dir / _P(orig_full_path).name)
+        try:
+            import shutil as _shutil
+            _shutil.copy2(orig_full_path, processed_copy_path)
+            # Propose deleting source to avoid double processing
+            try:
+                with open(files_to_delete_path, 'a', encoding='utf-8') as _ftd:
+                    _ftd.write(f"{orig_full_path}\tReason: migrated to processed_photos to avoid reprocessing\n")
+            except Exception:
+                pass
+        except Exception:
+            processed_copy_path = orig_full_path
+
+        # Remove the colorized image to avoid persisting it
+        try:
+            import os as _os
+            if _os.path.isfile(color_path):
+                _os.remove(color_path)
+        except Exception:
+            pass
 
         # Build CSV description string
         try:
@@ -314,12 +345,30 @@ def run_pipeline(
             description = ''
 
         # Row for TEXT csv (embedding-like)
+        # Extract path words (folders + filename without extension)
+        def _extract_path_words(path_str: str) -> str:
+            import re as _re
+            p = _P(path_str)
+            parts = [seg for seg in p.parts if seg not in ['/', '']]
+            words: list[str] = []
+            for seg in parts:
+                base = seg.rsplit('.', 1)[0]
+                tokens = _re.findall(r"[\w]+", base, flags=_re.UNICODE)
+                for t in tokens:
+                    tt = t.strip()
+                    if tt:
+                        words.append(tt)
+            return ' '.join(words)
+
+        path_words = _extract_path_words(processed_copy_path)
+        desc_with_paths = description + (". " + path_words if path_words else "")
+
         rows_for_text.append({
-            'original_path': str(input_path / orig_name),
-            'colorized_path': color_path,
+            'original_path': processed_copy_path,
+            'colorized_path': '',
             'full_results_path': str(full_rec_path),
             'llm_json_path': llm_obj.get('output_path') if isinstance(llm_obj, dict) else '',
-            'description': description
+            'description': desc_with_paths
         })
 
         # Row for FULL csv (no confidences, first background, compact lists)
@@ -435,8 +484,8 @@ def run_pipeline(
                         pass
 
             rows_for_full.append({
-                'original_path': str(input_path / orig_name),
-                'colorized_path': color_path,
+                'original_path': processed_copy_path,
+                'colorized_path': '',
                 'indoor_outdoor': io,
                 'background': bg_first or '',
                 'yolo_object_counts': obj_counts_str,
@@ -455,6 +504,7 @@ def run_pipeline(
                 'violence': viol_present,
                 'violence_explanation': viol_expl,
                 'llm_objects': llm_objs,
+                'path_words': path_words,
                 'full_results_path': str(full_rec_path),
                 'llm_json_path': llm_obj.get('output_path') if isinstance(llm_obj, dict) else ''
             })
