@@ -15,6 +15,20 @@ from main_app.modules.yolo_army import YOLOArmyDetector  # type: ignore[import]
 from main_app.modules.llm import LLMInterpreter  # type: ignore[import]
 from main_app.utils.summary_writer import SummaryWriter  # type: ignore[import]
 
+# Import ChromaDB handler (optional)
+try:
+    from main_app.modules.chroma_handler import create_chroma_handler, is_chromadb_available  # type: ignore[import]
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    print("Note: ChromaDB not available. Install with: pip install chromadb")
+    CHROMADB_AVAILABLE = False
+    
+    def create_chroma_handler(*args, **kwargs):
+        return None
+    
+    def is_chromadb_available():
+        return False
+
 
 class ImageProcessor:
     """Handles single image processing through all AI models."""
@@ -181,9 +195,19 @@ class ImageProcessor:
                     time.sleep(wait_s)
 
             print("\n\n--- LLM INTERPRETATION (Groq) ---\n")
-            orig_image_path = str(input_path / orig_name)
-            llm_output_path = str(results_dir / f"llm_{Path(orig_image_path).stem}_orig.json")
+            # orig_name comes from colorizer which uses full paths from selected files
+            # selected files come from input_path.rglob() which gives paths relative to input_path
+            # So orig_name should already be the correct relative path from input_path
+            orig_image_path = orig_name  # Just use orig_name as-is since it's already the full path
+            llm_output_path = str(results_dir / f"llm_{Path(orig_name).stem}_orig.json")
+            print(f"🔍 [PIPELINE DEBUG] About to call LLM analyze with:")
+            print(f"🔍 [PIPELINE DEBUG]   orig_name: {orig_name}")
+            print(f"🔍 [PIPELINE DEBUG]   orig_image_path: {orig_image_path}")
+            print(f"🔍 [PIPELINE DEBUG]   llm_output_path: {llm_output_path}")
+            print(f"🔍 [PIPELINE DEBUG]   Path exists: {Path(orig_image_path).exists()}")
+            print(f"🔍 [PIPELINE DEBUG]   LLM client status: {getattr(self.llm, 'client', None) is not None}")
             llm_response = self.llm.analyze(orig_image_path, save_path=llm_output_path)
+            print(f"🔍 [PIPELINE DEBUG] LLM analyze returned: {type(llm_response)} ({len(str(llm_response)) if llm_response else 0} chars)")
 
             # Attach to record
             try:
@@ -195,13 +219,21 @@ class ImageProcessor:
                 if isinstance(llm_response, str) and llm_response.strip():
                     llm_section_obj["json"] = llm_response
                 record["llm"] = llm_section_obj
-            except Exception:
-                pass
+                print(f"✅ [PIPELINE DEBUG] LLM results attached to record successfully")
+            except Exception as e:
+                print(f"❌ [PIPELINE DEBUG] Failed to attach LLM results to record: {str(e)}")
+                print(f"❌ [PIPELINE DEBUG] LLM response type: {type(llm_response)}")
+                print(f"❌ [PIPELINE DEBUG] LLM response content: {str(llm_response)[:200]}...")
 
             print("\n--- END LLM INTERPRETATION ---\n")
             return time.time()
 
-        except Exception:
+        except Exception as e:
+            print(f"❌ [LLM DEBUG] Exception in _process_llm: {str(e)}")
+            print(f"❌ [LLM DEBUG] Exception type: {type(e).__name__}")
+            import traceback
+            print(f"❌ [LLM DEBUG] Full traceback:")
+            traceback.print_exc()
             return last_llm_call_ts
 
     def _process_army_detection(
@@ -227,28 +259,108 @@ class PhotoSelector:
     """Handles photo selection logic."""
 
     @staticmethod
-    def select_photos(input_path: Path) -> List[str]:
-        """Interactive photo selection."""
-        print("Choose how many photos to process:")
-        print("1) One random photo")
-        print("2) Five random photos")
-        print("3) All photos")
-        choice = input("Enter 1, 2, or 3: ").strip()
+    def quick_count_estimate(input_path: Path) -> int:
+        """Quick estimate of photos without full scan."""
+        if not input_path.exists():
+            return 0
+        
+        exts = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".JPG", ".JPEG", ".PNG"}
+        count = 0
+        
+        # Sample first few directories for quick estimate
+        try:
+            for root_item in input_path.iterdir():
+                if root_item.is_file() and root_item.suffix in exts:
+                    count += 1
+                elif root_item.is_dir():
+                    # Quick sample of first subdirectory
+                    try:
+                        subcount = sum(1 for p in root_item.iterdir() 
+                                     if p.is_file() and p.suffix in exts)
+                        count += subcount
+                        if count > 50:  # Stop estimating after reasonable sample
+                            return count
+                    except:
+                        continue
+        except:
+            pass
+        return count
 
+    @staticmethod
+    def select_photos(input_path: Path) -> tuple[List[str], int]:
+        """Interactive photo selection with processed photo tracking."""
+        # Load processed photos from index
+        processed_index_path = Path("main_app_outputs/results/processed_index.csv")
+        already_processed = set()
+        
+        if processed_index_path.exists():
+            try:
+                import csv
+                with open(processed_index_path, 'r', encoding='utf-8', newline='') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if row.get('file_path'):
+                            already_processed.add(row['file_path'])
+            except Exception:
+                pass
+        
+        # Scan for all photos
         exts = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".JPG", ".JPEG", ".PNG"]
         all_files = [
-            str(p) for p in sorted(input_path.iterdir())
+            str(p) for p in sorted(input_path.rglob("*"))
             if p.suffix in exts and p.is_file()
         ]
+        
+        # Filter out already processed photos
+        unprocessed_files = [f for f in all_files if f not in already_processed]
+        
+        # Show status
+        total_photos = len(all_files)
+        processed_count = len(already_processed)
+        unprocessed_count = len(unprocessed_files)
+        
+        print(f"📊 Photo Status:")
+        print(f"   Total photos found: {total_photos}")
+        print(f"   Already processed: {processed_count}")
+        print(f"   Available to process: {unprocessed_count}")
+        
+        if unprocessed_count == 0:
+            print("🎉 All photos have been processed!")
+            return [], 1
+        
+        print(f"\nChoose how many photos to process:")
+        print("1) One random photo")
+        print("2) Five random photos") 
+        print("3) Custom number")
+        print("4) All remaining photos")
+        choice = input("Enter 1, 2, 3, or 4: ").strip()
 
         import random
         if choice == '1':
-            return random.sample(all_files, 1) if all_files else []
+            selected = random.sample(unprocessed_files, 1) if unprocessed_files else []
+            return selected, 1  # processing_mode: 1 = small batch
         elif choice == '2':
-            k = min(5, len(all_files))
-            return random.sample(all_files, k) if all_files else []
+            k = min(5, len(unprocessed_files))
+            selected = random.sample(unprocessed_files, k) if unprocessed_files else []
+            return selected, 1  # processing_mode: 1 = small batch
+        elif choice == '3':
+            # Custom number
+            while True:
+                try:
+                    custom_count = int(input(f"Enter number of photos to process (1-{unprocessed_count}): ").strip())
+                    if 1 <= custom_count <= unprocessed_count:
+                        break
+                    else:
+                        print(f"Please enter a number between 1 and {unprocessed_count}")
+                except ValueError:
+                    print("Please enter a valid number")
+            
+            selected = random.sample(unprocessed_files, custom_count)
+            # Use small batch mode for ≤10, large batch for >10
+            processing_mode = 1 if custom_count <= 10 else 2
+            return selected, processing_mode
         else:
-            return all_files
+            return unprocessed_files, 2  # processing_mode: 2 = large batch (32 at a time)
 
 
 class CSVExporter:
@@ -257,7 +369,8 @@ class CSVExporter:
     @staticmethod
     def create_csv_rows(
         per_image: List[Dict[str, Any]],
-        input_path: Path
+        input_path: Path,
+        results_dir: Path
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
         """Create rows for text and full CSV files."""
         rows_for_text: List[Dict[str, str]] = []
@@ -267,34 +380,28 @@ class CSVExporter:
             orig_name = record.get("original_filename", "")
 
             # Text CSV row
-            text_row = CSVExporter._build_text_row(record, input_path, orig_name)
+            text_row = CSVExporter._build_text_row(record, input_path, orig_name, results_dir)
             rows_for_text.append(text_row)
 
             # Full CSV row
-            full_row = CSVExporter._build_full_row(record, input_path, orig_name)
+            full_row = CSVExporter._build_full_row(record, input_path, orig_name, results_dir)
             rows_for_full.append(full_row)
 
         return rows_for_text, rows_for_full
 
     @staticmethod
-    def _build_text_row(record: Dict[str, Any], input_path: Path, orig_name: str) -> Dict[str, str]:
-        """Build text CSV row with description."""
-        description = CSVExporter._build_description(record)
-        results_dir = input_path.parent / "main_app_outputs" / "results"
-        full_rec_path = results_dir / f"full_{Path(orig_name).stem}.json"
-
-        llm_obj = record.get("llm") if isinstance(record.get("llm"), dict) else None
+    def _build_text_row(record: Dict[str, Any], input_path: Path, orig_name: str, results_dir: Path) -> Dict[str, str]:
+        """Build text CSV row with comprehensive description for embedding."""
+        comprehensive_text = CSVExporter._build_comprehensive_description(record, input_path)
+        original_for_csv = record.get('processed_path') or str((orig_name if Path(orig_name).is_absolute() else (input_path / orig_name)))
 
         return {
-            'original_path': str(input_path / orig_name),
-            'colorized_path': record.get("colorized_path", ""),
-            'full_results_path': str(full_rec_path),
-            'llm_json_path': llm_obj.get('output_path') if isinstance(llm_obj, dict) else '',
-            'description': description
+            'original_path': original_for_csv,
+            'comprehensive_text': comprehensive_text
         }
 
     @staticmethod
-    def _build_full_row(record: Dict[str, Any], input_path: Path, orig_name: str) -> Dict[str, str]:
+    def _build_full_row(record: Dict[str, Any], input_path: Path, orig_name: str, results_dir: Path) -> Dict[str, str]:
         """Build full CSV row with all fields."""
         # Extract data
         clip_obj = record.get('clip', {})
@@ -316,18 +423,40 @@ class CSVExporter:
         # LLM fields
         llm_fields = CSVExporter._extract_llm_fields(record)
 
-        results_dir = input_path.parent / "main_app_outputs" / "results"
         full_rec_path = results_dir / f"full_{Path(orig_name).stem}.json"
 
+        # Extract path words (folders + filename without extension)
+        def _extract_path_words(path_str: str) -> str:
+            import re as _re
+            p = Path(path_str)
+            parts = [seg for seg in p.parts if seg not in ['/', '']]
+            words: list[str] = []
+            for seg in parts:
+                base = seg.rsplit('.', 1)[0]
+                tokens = _re.findall(r"[\w]+", base, flags=_re.UNICODE)
+                for t in tokens:
+                    tt = t.strip()
+                    if tt:
+                        words.append(tt)
+            return ' '.join(words)
+
+        source_path = record.get('source_path') or str((orig_name if Path(orig_name).is_absolute() else (input_path / orig_name)))
+        processed_path = record.get('processed_path') or source_path
+        path_words = _extract_path_words(processed_path)
+        source_path_words = _extract_path_words(source_path)
+
         return {
-            'original_path': str(input_path / orig_name),
-            'colorized_path': record.get("colorized_path", ""),
+            'original_path': processed_path,
+            'source_path': source_path,
+            'colorized_path': '',
             'indoor_outdoor': clip_obj.get('indoor_outdoor', ''),
             'background': bg_first,
             'yolo_object_counts': obj_counts_str,
             'men': str(men),
             'women': str(women),
             **llm_fields,
+            'path_words': path_words,
+            'source_path_words': source_path_words,
             'full_results_path': str(full_rec_path),
             'llm_json_path': llm_fields.get('llm_json_path', '')
         }
@@ -340,7 +469,166 @@ class CSVExporter:
         return w >= m
 
     @staticmethod
-    def _build_description(record: Dict[str, Any]) -> str:
+    def _build_comprehensive_description(record: Dict[str, Any], input_path: Path) -> str:
+        """Build comprehensive description string combining all extracted data for embedding."""
+        try:
+            text_parts = []
+            
+            # 1. LLM CAPTION (first priority)
+            llm_obj = record.get("llm")
+            llm_parsed = {}
+            if isinstance(llm_obj, dict):
+                llm_json_str = llm_obj.get("json")
+                if isinstance(llm_json_str, str) and llm_json_str.strip():
+                    try:
+                        llm_parsed = json.loads(llm_json_str)
+                        caption = llm_parsed.get('caption', '')
+                        if caption:
+                            text_parts.append(caption)
+                    except Exception:
+                        pass
+            
+            # If no LLM caption, create basic description from filename
+            if not text_parts:
+                orig_name = record.get("original_filename", "")
+                if orig_name:
+                    filename = Path(orig_name).stem
+                    basic_desc = filename.replace('_', ' ').replace('-', ' ')
+                    if basic_desc:
+                        text_parts.append(f"Historical photograph {basic_desc}")
+            
+            # 2. TEXT (Hebrew/German)
+            if llm_parsed:
+                text_analysis = llm_parsed.get('text_analysis', {})
+                
+                # Hebrew text
+                hebrew_text = text_analysis.get('hebrew_text', {})
+                if hebrew_text.get('present', False):
+                    hebrew_found = hebrew_text.get('text_found', '')
+                    if hebrew_found:
+                        text_parts.append(f"Hebrew text: {hebrew_found}")
+                    hebrew_translation = hebrew_text.get('translation', '')
+                    if hebrew_translation:
+                        text_parts.append(f"Hebrew translation: {hebrew_translation}")
+                
+                # German text  
+                german_text = text_analysis.get('german_text', {})
+                if german_text.get('present', False):
+                    german_found = german_text.get('text_found', '')
+                    if german_found:
+                        text_parts.append(f"German text: {german_found}")
+                    german_translation = german_text.get('translation', '')
+                    if german_translation:
+                        text_parts.append(f"German translation: {german_translation}")
+            
+            # 3. CLIP analysis
+            clip_data = record.get('clip', {})
+            indoor_outdoor = clip_data.get('indoor_outdoor', '')
+            if indoor_outdoor:
+                text_parts.append(f"{indoor_outdoor} setting")
+            
+            # Background
+            background_detections = clip_data.get('background_detections', [])
+            for bg in background_detections[:2]:
+                if isinstance(bg, dict):
+                    category = bg.get('category', '')
+                    if category:
+                        text_parts.append(f"Background: {category}")
+            
+            # People gender from CLIP
+            people_gender = clip_data.get('people_gender', [])
+            men_count = sum(1 for p in people_gender if isinstance(p, dict) and p.get('man', 0) >= p.get('woman', 0))
+            women_count = len(people_gender) - men_count
+            if men_count > 0:
+                text_parts.append(f"{men_count} men")
+            if women_count > 0:
+                text_parts.append(f"{women_count} women")
+            
+            # 4. YOLO detection
+            yolo_data = record.get('yolo', {})
+            object_counts = yolo_data.get('object_counts', {})
+            for obj_type, count in object_counts.items():
+                if count > 0:
+                    text_parts.append(f"{count} {obj_type}{'s' if count > 1 else ''} detected")
+            
+            # 5. LLM detailed analysis
+            if llm_parsed:
+                # People count
+                people_under_18 = llm_parsed.get('people_under_18', 0)
+                if people_under_18 > 0:
+                    text_parts.append(f"{people_under_18} people under 18")
+                
+                # Symbols
+                if llm_parsed.get('has_jewish_symbols', False):
+                    text_parts.append("Jewish symbols present")
+                    jewish_symbols = llm_parsed.get('jewish_symbols_details', [])
+                    for symbol in jewish_symbols:
+                        if isinstance(symbol, dict):
+                            symbol_type = symbol.get('symbol_type', '')
+                            if symbol_type:
+                                text_parts.append(symbol_type)
+                
+                if llm_parsed.get('has_nazi_symbols', False):
+                    text_parts.append("Nazi symbols present")
+                    nazi_symbols = llm_parsed.get('nazi_symbols_details', [])
+                    for symbol in nazi_symbols:
+                        if isinstance(symbol, dict):
+                            symbol_type = symbol.get('symbol_type', '')
+                            if symbol_type:
+                                text_parts.append(symbol_type)
+                
+                # Objects and artifacts
+                objects = llm_parsed.get('main_objects_artifacts_animals', [])
+                for obj in objects:
+                    if isinstance(obj, dict):
+                        item = obj.get('item', '')
+                        description = obj.get('description', '')
+                        if item:
+                            text_parts.append(item)
+                            if description:
+                                text_parts.append(description)
+                
+                # Violence
+                violence = llm_parsed.get('violence_assessment', {})
+                if violence.get('signs_of_violence', False):
+                    explanation = violence.get('explanation', '')
+                    if explanation and explanation != "No signs of violence detected":
+                        text_parts.append(explanation)
+            
+            # 6. OCR text
+            ocr_data = record.get('ocr', {})
+            if ocr_data.get('has_text', False):
+                ocr_lines = ocr_data.get('lines', [])
+                for line in ocr_lines[:2]:
+                    if line and line.strip():
+                        text_parts.append(f"OCR text: {line.strip()}")
+            
+            # 7. Collection context from folder path
+            orig_name = record.get("original_filename", "")
+            if orig_name:
+                try:
+                    path_parts = Path(orig_name).parts
+                    if len(path_parts) > 2 and path_parts[0] == "photo_collections" and path_parts[1] == "project Photography":
+                        folder_name = path_parts[2]
+                        folder_context = f"Collection: {folder_name.replace(' – ', ' - ').replace('_', ' ')}"
+                        text_parts.append(folder_context)
+                except Exception:
+                    pass
+            
+            # Combine all text parts into single comprehensive description
+            comprehensive_text = ' '.join([part for part in text_parts if part and part.strip()])
+            
+            # Fallback if no data found
+            if not comprehensive_text:
+                comprehensive_text = f"Historical photograph from {Path(orig_name).name}" if orig_name else "Historical photograph"
+            
+            return comprehensive_text
+            
+        except Exception:
+            return "Historical photograph"
+
+    @staticmethod
+    def _build_description(record: Dict[str, Any], input_path: Path) -> str:
         """Build description string from record data."""
         try:
             parts = []
@@ -386,7 +674,26 @@ class CSVExporter:
             if bg and isinstance(bg[0], str):
                 parts.append(bg[0])
 
-            return '. '.join([p for p in parts if isinstance(p, str) and p])
+            # Append path words from original path
+            orig_name = record.get("original_filename", "")
+            source_path = record.get('source_path') or str((orig_name if Path(orig_name).is_absolute() else (input_path / orig_name)))
+            def _extract_path_words(path_str: str) -> str:
+                import re as _re
+                p = Path(path_str)
+                parts2 = [seg for seg in p.parts if seg not in ['/', '']]
+                words2: list[str] = []
+                for seg in parts2:
+                    base = seg.rsplit('.', 1)[0]
+                    tokens = _re.findall(r"[\w]+", base, flags=_re.UNICODE)
+                    for t in tokens:
+                        tt = t.strip()
+                        if tt:
+                            words2.append(tt)
+                return ' '.join(words2)
+            path_words = _extract_path_words(source_path)
+
+            body = '. '.join([p for p in parts if isinstance(p, str) and p])
+            return body + (". " + path_words if path_words else "")
 
         except Exception:
             return ''
@@ -558,6 +865,68 @@ class CSVExporter:
             fields['llm_objects'] = '; '.join(parts)
 
 
+def process_small_batch(
+    selected: List[str],
+    colorizer: 'Colorizer',
+    processor: ImageProcessor,
+    input_path: Path,
+    colorized_dir: Path,
+    results_dir: Path,
+    ab_boost: float,
+    multi_photo: bool
+) -> List[Dict[str, Any]]:
+    """Process small batches (1-5 photos) efficiently: colorize all → process all → cleanup."""
+    print(f"🎨 Step 1/3: Colorizing {len(selected)} photos...")
+    
+    # Colorize all photos first
+    colorized_map: Dict[str, str] = colorizer.colorize_files(
+        files=selected,
+        output_directory=str(colorized_dir),
+        ab_boost=ab_boost
+    )
+    
+    print(f"🤖 Step 2/3: Running AI analysis on {len(colorized_map)} photos...")
+    
+    # Process all photos
+    per_image: List[Dict[str, Any]] = []
+    last_llm_call_ts: float = 0.0
+    
+    for i, (orig_name, color_path) in enumerate(sorted(colorized_map.items()), 1):
+        print(f"[{i}/{len(colorized_map)}] Processing {Path(orig_name).name}...")
+        
+        # Just track the original path - no copying needed  
+        # orig_name comes from colorized_map keys which are the full file paths from selected
+        src_path = orig_name  # orig_name is already the full path
+        processed_path = src_path  # Keep same path, just track as processed
+        
+        # Process image (LLM will use the source path while it still exists)
+        record, last_llm_call_ts = processor.process_image(
+            orig_name, color_path, input_path, results_dir,
+            multi_photo, last_llm_call_ts
+        )
+        
+        # Update record with file paths (no file operations needed)
+        record['processed_path'] = processed_path
+        record['source_path'] = src_path
+        print(f"  ✅ Processed {Path(src_path).name} (original kept in place)")
+        
+        per_image.append(record)
+    
+    print(f"🧹 Step 3/3: Cleaning up {len(colorized_map)} colorized files...")
+    
+    # Clean up all colorized files
+    for color_path in colorized_map.values():
+        try:
+            import os
+            if os.path.isfile(color_path):
+                os.remove(color_path)
+        except Exception:
+            pass
+    
+    print(f"✅ Small batch processing complete: {len(per_image)} photos processed")
+    return per_image
+
+
 def run_main_pipeline(
     input_dir: str,
     output_dir: str,
@@ -576,8 +945,8 @@ def run_main_pipeline(
     colorized_dir.mkdir(parents=True, exist_ok=True)
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    # Select photos
-    selected = PhotoSelector.select_photos(input_path)
+    # Select photos with processing mode
+    selected, processing_mode = PhotoSelector.select_photos(input_path)
     if not selected:
         return {"error": "No photos selected"}
 
@@ -591,24 +960,111 @@ def run_main_pipeline(
 
     processor = ImageProcessor(yolo, clip_mgr, ocr, yolo_army, llm)
 
-    # Colorize selected images
-    colorized_map: Dict[str, str] = colorizer.colorize_files(
-        files=selected,
-        output_directory=str(colorized_dir),
-        ab_boost=ab_boost
-    )
-
-    # Process each image
+    # Process based on mode
     per_image: List[Dict[str, Any]] = []
-    multi_photo = len(colorized_map) > 1
+    total_to_process = len(selected)
+    multi_photo = total_to_process > 1
     last_llm_call_ts: float = 0.0
-
-    for orig_name, color_path in sorted(colorized_map.items()):
-        record, last_llm_call_ts = processor.process_image(
-            orig_name, color_path, input_path, results_dir,
-            multi_photo, last_llm_call_ts
+    processed_in_run = 0
+    
+    if processing_mode == 1:
+        # Small batch mode (1 or 5 photos): colorize all → process all → cleanup
+        print(f"🎯 Small batch mode: Processing {total_to_process} photos efficiently")
+        per_image = process_small_batch(
+            selected, colorizer, processor, input_path, colorized_dir, 
+            results_dir, ab_boost, multi_photo
         )
-        per_image.append(record)
+    else:
+        # Large batch mode: process in chunks of 32
+        print(f"🔄 Large batch mode: Processing {total_to_process} photos in batches of 32")
+        try:
+            # Global total in project (recursive)
+            exts = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".JPG", ".JPEG", ".PNG"]
+            global_total = len([1 for p in input_path.rglob("*") if p.suffix in exts and p.is_file()])
+        except Exception:
+            global_total = total_to_process
+
+        BATCH_SIZE = 32
+        for b_start in range(0, len(selected), BATCH_SIZE):
+            batch = selected[b_start:b_start + BATCH_SIZE]
+            # Colorize batch (reuse existing colorized files when available)
+            colorized_map: Dict[str, str] = {}
+            newly_created: Dict[str, str] = {}
+            try:
+                # Pre-fill from existing colorized files
+                for fp in batch:
+                    try:
+                        p = Path(fp)
+                        out_path = colorized_dir / f"colorized_{p.stem}{p.suffix}"
+                        if out_path.exists() and out_path.is_file():
+                            colorized_map[str(p)] = str(out_path)
+                    except Exception:
+                        continue
+
+                # Determine which need colorization
+                to_colorize = [fp for fp in batch if str(fp) not in colorized_map]
+                if to_colorize:
+                    created_map = colorizer.colorize_files(
+                        files=to_colorize,
+                        output_directory=str(colorized_dir),
+                        ab_boost=ab_boost
+                    )
+                    newly_created.update(created_map)
+                    colorized_map.update(created_map)
+            except Exception:
+                pass
+
+            # Process each image in batch
+            for orig_name, color_path in sorted(colorized_map.items()):
+                # Progress: start of photo
+                current_idx = processed_in_run + 1
+                try:
+                    start_name = Path(orig_name).name
+                except Exception:
+                    start_name = str(orig_name)
+                print(f"[START] {current_idx}/{total_to_process} {start_name}")
+
+                record, last_llm_call_ts = processor.process_image(
+                    orig_name, color_path, input_path, results_dir,
+                    multi_photo, last_llm_call_ts
+                )
+                # Just track the original path - no file operations needed
+                # orig_name is already the full path from colorized_map keys
+                src_path = orig_name
+                record['processed_path'] = src_path
+                record['source_path'] = src_path
+                # Remove colorized artifact immediately only if we just created it in this run
+                try:
+                    import os as _os
+                    if str(orig_name) in newly_created:
+                        if _os.path.isfile(color_path):
+                            _os.remove(color_path)
+                except Exception:
+                    pass
+                per_image.append(record)
+                # Progress line with 200 OK and details
+                processed_in_run += 1
+                try:
+                    filename = Path(record.get('original_filename', start_name)).name
+                except Exception:
+                    filename = record.get('original_filename', start_name)
+                try:
+                    clip_obj = record.get('clip', {})
+                    io = clip_obj.get('indoor_outdoor', 'unknown')
+                    bg_top = clip_obj.get('background_top', [])
+                    bg_first = bg_top[0] if isinstance(bg_top, list) and bg_top else ''
+                    yolo_obj = record.get('yolo', {})
+                    detections = yolo_obj.get('detections', []) if isinstance(yolo_obj, dict) else []
+                    objs = len(detections)
+                    genders = clip_obj.get('people_gender', []) if isinstance(clip_obj, dict) else []
+                    women = sum(1 for g in genders if isinstance(g, dict) and float(g.get('woman', 0.0)) >= float(g.get('man', 0.0)))
+                    men = len(genders) - women
+                    ocr_obj = record.get('ocr', {})
+                    has_text = bool(ocr_obj.get('has_text')) if isinstance(ocr_obj, dict) else False
+                    processed_path = record.get('processed_path', '')
+                    print(f"[200 OK] {processed_in_run}/{total_to_process} {filename} | IO:{io} BG:{bg_first} objs:{objs} people:{men+women} (m:{men}/w:{women}) OCR:{str(has_text).lower()} | pooled:{processed_path}")
+                except Exception:
+                    print(f"[200 OK] Processed {processed_in_run}/{total_to_process} | Project total: {global_total}")
 
     # Write summaries
     summary_writer = SummaryWriter()
@@ -619,6 +1075,54 @@ def run_main_pipeline(
 
     # Export CSV files
     export_csv_files(per_image, input_path, results_dir)
+
+    # Store in ChromaDB (optional)
+    if CHROMADB_AVAILABLE and per_image:
+        print("\n💾 Storing analysis data in ChromaDB...")
+        try:
+            chroma_handler = create_chroma_handler()
+            if chroma_handler:
+                photo_ids = chroma_handler.batch_store_photos(per_image)
+                print(f"✅ Stored {len(photo_ids)} photos in ChromaDB")
+                
+                # Print collection stats
+                stats = chroma_handler.get_collection_stats()
+                print(f"📊 ChromaDB Collection: {stats['total_photos']} total photos")
+            else:
+                print("❌ Failed to create ChromaDB handler")
+        except Exception as e:
+            print(f"⚠️  ChromaDB storage failed: {e}")
+            print("   (Processing continues with CSV storage only)")
+
+    # Write simple processed index
+    try:
+        import csv
+        idx_path = results_dir / 'processed_index.csv'
+        
+        # Load existing processed files
+        existing = set()
+        if idx_path.exists():
+            with open(idx_path, 'r', encoding='utf-8', newline='') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get('file_path'):
+                        existing.add(row['file_path'])
+        
+        # Add newly processed files
+        for rec in per_image:
+            file_path = rec.get('source_path', '')
+            if file_path:
+                existing.add(file_path)
+        
+        # Write updated index
+        with open(idx_path, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['file_path'])
+            writer.writeheader()
+            for path in sorted(existing):
+                writer.writerow({'file_path': path})
+                
+    except Exception:
+        pass
 
     return {
         "output_dir": str(output_path),
@@ -635,11 +1139,11 @@ def export_csv_files(per_image: List[Dict[str, Any]], input_path: Path, results_
     try:
         import csv
 
-        rows_for_text, rows_for_full = CSVExporter.create_csv_rows(per_image, input_path)
+        rows_for_text, rows_for_full = CSVExporter.create_csv_rows(per_image, input_path, results_dir)
 
         # Export text CSV
         csv_path_text = results_dir / 'data_text.csv'
-        text_fields = ['original_path', 'colorized_path', 'full_results_path', 'llm_json_path', 'description']
+        text_fields = ['original_path', 'comprehensive_text']
         write_csv_with_merge(csv_path_text, rows_for_text, text_fields)
 
         # Export full CSV

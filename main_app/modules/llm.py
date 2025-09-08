@@ -23,9 +23,19 @@ class LLMInterpreter:
         print(f"[LLM] GROQ_API_KEY present: {str(key_present).lower()}")
         self.client = Groq()
         self.error = None
+        self.photo_count = 0
 
     def analyze(self, image_path: str, save_path: Optional[str] = None, retries: int = 3) -> Optional[str]:
+        self.photo_count += 1
+        
+        # Use scout model for every second photo (photo 2, 4, 6, etc.)
+        if self.photo_count % 2 == 0:
+            model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
+        else:
+            model_name = "meta-llama/llama-4-maverick-17b-128e-instruct"
+            
         print(f"🔍 [LLM DEBUG] Starting analysis of: {image_path}")
+        print(f"🔍 [LLM DEBUG] Photo #{self.photo_count}, using model: {model_name}")
         print(f"🔍 [LLM DEBUG] Save path: {save_path}")
         print(f"🔍 [LLM DEBUG] Client status: {self.client is not None}")
         
@@ -291,7 +301,7 @@ Now, please analyze the historical photograph provided and return your response 
             print(f"🔄 [LLM DEBUG] API attempt {attempt + 1}/{retries}")
             try:
                 completion = self.client.chat.completions.create(  # type: ignore[call-arg]
-                    model="meta-llama/llama-4-maverick-17b-128e-instruct",
+                    model=model_name,
                     messages=messages_obj,
                     temperature=0.2,
                     max_tokens=1024,

@@ -89,7 +89,7 @@ class Colorizer:
         return mapping
 
     def colorize_files(self, files: List[str], output_directory: str, ab_boost: float = 1.0) -> Dict[str, str]:
-        """Colorize a specific list of files. Returns map: original_filename -> colorized_path."""
+        """Colorize a specific list of files. Returns map: original_full_path -> colorized_path."""
         out_dir = Path(output_directory)
         out_dir.mkdir(parents=True, exist_ok=True)
         mapping: Dict[str, str] = {}
@@ -99,7 +99,7 @@ class Colorizer:
                 continue
             out_path = out_dir / f"colorized_{p.stem}{p.suffix}"
             self._colorize_path(str(p), str(out_path), ab_boost=ab_boost)
-            mapping[p.name] = str(out_path)
+            mapping[str(p)] = str(out_path)
         return mapping
 
 

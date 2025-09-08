@@ -10,6 +10,9 @@ python-dotenv>=1.0.0
 ultralytics>=8.0.0
 groq>=0.9.0
 
+# Gemma AI reranking
+google-genai>=1.15.0
+
 # CLIP semantic analysis (install separately to avoid conflicts)
 # torch and torchvision will be installed via ultralytics dependencies
 
@@ -21,3 +24,6 @@ pytest-cov>=4.0.0
 # opencv-contrib-python>=4.5.0  # Alternative to opencv-python with extra modules
 pytesseract>=0.3.10
 sentence-transformers>=2.2.2
+
+# ChromaDB for vector database storage
+chromadb>=0.4.0
