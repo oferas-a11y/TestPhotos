@@ -1950,6 +1950,163 @@ class DashboardPipeline:
 
         return "".join(parts)
 
+    def _create_html_gallery(self, results: List[Dict[str, Any]], title: str, search_type: str) -> Path:
+        """Create HTML gallery for search results."""
+        self.data_loader.output_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = self.data_loader.output_dir / f"{search_type}_{ts}.html"
+
+        def esc(t: str) -> str:
+            return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+        def get_image_url(result: Dict[str, Any]) -> str:
+            """Get base64 data URL for original image."""
+            orig_path = result.get('original_path', '')
+            if not orig_path:
+                return ""
+
+            # Get absolute path
+            project_root = self.data_loader.output_dir.parent.parent
+            source_path = project_root / orig_path
+
+            if source_path.exists():
+                try:
+                    import base64
+                    with open(source_path, 'rb') as f:
+                        img_data = f.read()
+                    ext = source_path.suffix.lower()
+                    if ext == '.jpg' or ext == '.jpeg':
+                        mime_type = 'image/jpeg'
+                    elif ext == '.png':
+                        mime_type = 'image/png'
+                    else:
+                        mime_type = 'image/jpeg'
+                    
+                    b64_data = base64.b64encode(img_data).decode('utf-8')
+                    return f"data:{mime_type};base64,{b64_data}"
+                except Exception:
+                    pass
+            return ""
+
+        # HTML template
+        parts = [
+            "<!DOCTYPE html>",
+            "<html>",
+            "<head>",
+            f"<title>{esc(title)}</title>",
+            "<style>",
+            "body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }",
+            "h1 { color: #333; text-align: center; }",
+            ".gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }",
+            ".item { background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }",
+            ".item img { max-width: 100%; height: auto; border-radius: 4px; }",
+            ".filename { font-weight: bold; color: #0066cc; margin: 10px 0 5px 0; }",
+            ".score { color: #666; font-size: 0.9em; margin-bottom: 10px; }",
+            ".metadata { font-size: 0.85em; color: #555; margin-top: 10px; }",
+            ".metadata div { margin: 2px 0; }",
+            ".no-image { width: 100%; height: 200px; background: #f0f0f0; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #666; border-radius: 4px; }",
+            "</style>",
+            "</head>",
+            "<body>",
+            f"<h1>{esc(title)}</h1>",
+            f"<p>Found {len(results)} results</p>",
+            "<div class='gallery'>"
+        ]
+
+        for i, result in enumerate(results):
+            parts.append("<div class='item'>")
+            
+            # Image
+            img_url = get_image_url(result)
+            if img_url:
+                parts.append(f"<img src='{img_url}' alt='Photo {i+1}'>")
+            else:
+                parts.append("<div class='no-image'>Image not available</div>")
+            
+            # Filename and score
+            filename = result.get('filename', 'Unknown')
+            score = result.get('similarity_score', 0)
+            parts.append(f"<div class='filename'>{esc(filename)}</div>")
+            parts.append(f"<div class='score'>Similarity Score: {score:.3f}</div>")
+            
+            # Metadata
+            parts.append("<div class='metadata'>")
+            
+            metadata_fields = [
+                ('original_path', 'Path'),
+                ('total_people', 'People Count'),
+                ('has_jewish_symbols', 'Jewish Symbols'),
+                ('has_nazi_symbols', 'Nazi Symbols'),
+                ('signs_of_violence', 'Violence'),
+                ('has_ocr_text', 'Has Text'),
+                ('has_hebrew_text', 'Hebrew Text'),
+                ('has_german_text', 'German Text'),
+                ('indoor_outdoor', 'Location')
+            ]
+            
+            for field, label in metadata_fields:
+                value = result.get(field)
+                if value is not None and str(value).strip():
+                    if isinstance(value, bool):
+                        value_str = "Yes" if value else "No"
+                    else:
+                        value_str = str(value)
+                    parts.append(f"<div><strong>{label}:</strong> {esc(value_str)}</div>")
+            
+            parts.append("</div>")
+            parts.append("</div>")
+
+        parts.extend([
+            "</div>",
+            f"<p style='text-align: center; margin-top: 30px; color: #666;'>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
+            "</body>",
+            "</html>"
+        ])
+
+        # Write file
+        with open(out, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(parts))
+
+        return out
+
+    def _display_search_results(self, results: List[Dict[str, Any]], title: str) -> None:
+        """Display search results in a formatted list."""
+        if not results:
+            print("No results to display.")
+            return
+
+        print(f"\n{title}")
+        print("=" * len(title))
+        
+        for i, result in enumerate(results, 1):
+            filename = result.get('filename', 'Unknown')
+            score = result.get('similarity_score', 0)
+            path = result.get('original_path', '')
+            
+            print(f"\n{i}. {filename}")
+            print(f"   Score: {score:.3f}")
+            print(f"   Path: {path}")
+            
+            # Show key metadata
+            people = result.get('total_people', 0)
+            if people > 0:
+                print(f"   People: {people}")
+            
+            flags = []
+            if result.get('has_jewish_symbols'):
+                flags.append("Jewish symbols")
+            if result.get('has_nazi_symbols'):
+                flags.append("Nazi symbols")
+            if result.get('signs_of_violence'):
+                flags.append("Violence")
+            if result.get('has_hebrew_text'):
+                flags.append("Hebrew text")
+            if result.get('has_german_text'):
+                flags.append("German text")
+            
+            if flags:
+                print(f"   Flags: {', '.join(flags)}")
+
 
 def main() -> None:
     """Main entry point for dashboard pipeline."""
