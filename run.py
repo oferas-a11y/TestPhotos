@@ -241,10 +241,13 @@ def run_dashboard_command():
     print("4️⃣  ChromaDB Semantic Search - Vector database search")
     print("5️⃣  ChromaDB Category Search - Fast metadata filtering")
     print("6️⃣  ChromaDB Stats - Show vector database statistics")
+    print("7️⃣  Pinecone Semantic Search - Cloud vector database search")
+    print("8️⃣  Pinecone Stats - Show cloud database statistics")
+    print("9️⃣  Migrate to Pinecone - Move data to cloud")
     print("0️⃣  Exit")
     
     while True:
-        choice = input("\n🎯 Choose search type (1-6, 0 to exit): ").strip()
+        choice = input("\n🎯 Choose search type (1-9, 0 to exit): ").strip()
         
         if choice == "1":
             print("\n🏷️  Running Category Search...")
@@ -271,11 +274,25 @@ def run_dashboard_command():
             print("\n📊 ChromaDB Statistics...")
             dashboard.get_chroma_stats()
             break
+        elif choice == "7":
+            print("\n🔍 Running Pinecone Semantic Search...")
+            dashboard.run_pinecone_semantic_search()
+            break
+        elif choice == "8":
+            print("\n📊 Pinecone Statistics...")
+            dashboard.get_pinecone_stats()
+            break
+        elif choice == "9":
+            print("\n🔄 Migrating to Pinecone...")
+            import subprocess
+            result = subprocess.run([sys.executable, "migrate_to_pinecone.py"], 
+                                  capture_output=False, text=True)
+            break
         elif choice == "0":
             print("👋 Goodbye!")
             break
         else:
-            print("❌ Invalid choice. Please enter 1-6 or 0")
+            print("❌ Invalid choice. Please enter 1-9 or 0")
 
 
 def show_interactive_menu():
