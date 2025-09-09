@@ -1622,75 +1622,58 @@ class DashboardPipeline:
             print("   And that you have migrated your data to Pinecone.")
             return
 
-        while True:
-            print("\n🔍 Pinecone Semantic Search")
-            print("=" * 40)
-            
-            query = input("🔎 Enter your search query (or 'back'): ").strip()
-            
-            if not query or query.lower() == 'back':
-                break
-            
-            try:
-                results_count = input("📊 How many results? (default 10): ").strip()
-                n_results = int(results_count) if results_count else 10
-                n_results = max(1, min(n_results, 50))  # Limit between 1-50
-                
-                use_reranking_input = input("🤖 Use Gemini AI reranking? (Y/n): ").strip().lower()
-                use_reranking = use_reranking_input != 'n'
-                
-                print(f"\n🔍 Searching Pinecone for: '{query}'")
-                print(f"📊 Requesting {n_results} results")
-                if use_reranking:
-                    print("🤖 Gemini reranking: Enabled")
-                
-                results = self.pinecone_search.semantic_search(
-                    query=query,
-                    n_results=n_results,
-                    use_gemma_reranking=use_reranking
-                )
-                
-                if not results:
-                    print("❌ No results found.")
-                    continue
-                
-                print(f"\n✅ Found {len(results)} results")
-                
-                # Ask what to do with results
-                while True:
-                    print("\n📋 What would you like to do with these results?")
-                    print("1️⃣  Show detailed list")
-                    print("2️⃣  Create HTML gallery")  
-                    print("3️⃣  New search")
-                    print("0️⃣  Back to main menu")
-                    
-                    choice = input("\n🎯 Choose action (1-3, 0 for back): ").strip()
-                    
-                    if choice == "1":
-                        self._display_search_results(results, "Pinecone Semantic Search Results")
-                    elif choice == "2":
-                        gallery_file = self._create_html_gallery(
-                            results, 
-                            f"Pinecone Semantic Search - {query}",
-                            "pinecone_semantic"
-                        )
-                        print(f"📄 Gallery created: {gallery_file}")
-                        
-                        if input("🌐 Open in browser? (Y/n): ").strip().lower() != 'n':
-                            webbrowser.open(f"file://{gallery_file.absolute()}")
-                            
-                    elif choice == "3":
-                        break  # Break inner loop to start new search
-                    elif choice == "0":
-                        return  # Exit completely
-                    else:
-                        print("❌ Invalid choice. Please enter 1-3 or 0")
-                        
-            except KeyboardInterrupt:
-                print("\n👋 Search cancelled")
-                break
-            except Exception as e:
-                print(f"❌ Search error: {e}")
+        stats = self.pinecone_search.get_stats()
+        print(f"📊 Pinecone contains {stats.get('total_photos', 0)} photos")
+
+        print("\n🔍 Pinecone Semantic Search (Cloud Vector Database)")
+        query = input("Enter search query: ").strip()
+        if not query:
+            print("Empty query")
+            return
+
+        k_input = input("Top K results (1/5/10/20): ").strip() or '10'
+        try:
+            k_int = min(50, max(1, int(k_input)))
+        except ValueError:
+            k_int = 10
+
+        print(f"\n🔍 Searching Pinecone for: '{query}'...")
+        results = self.pinecone_search.semantic_search(query, k_int)
+
+        if not results:
+            print("❌ No results found")
+            return
+
+        print(f"\n🎯 Found {len(results)} results from Pinecone:")
+        for i, r in enumerate(results, 1):
+            similarity = r.get('similarity_score', 0.0)
+            orig_path = r.get('original_path', 'Unknown')
+            filename = Path(orig_path).name if orig_path else f"Result {i}"
+            print(f"{i}. {filename} (similarity: {similarity:.3f})")
+
+            desc = r.get('document', '')
+            if desc and len(desc) > 100:
+                print(f"   {desc[:100]}...")
+            elif desc:
+                print(f"   {desc}")
+
+        # Generate and open gallery automatically
+        try:
+            out_html = self._create_html_gallery(
+                results, 
+                f"Pinecone Semantic Search - {query}",
+                "pinecone_semantic"
+            )
+            print(f"\n📄 Gallery saved: {out_html}")
+
+            # Open in browser automatically
+            webbrowser.open(f"file://{out_html.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"❌ Failed to generate gallery: {e}")
+
+        # Ask if user wants to see CLIP-based similar photos (if available)
+        self._ask_for_pinecone_clip_similarities(results, search_type="semantic")
                 
     def get_pinecone_stats(self) -> None:
         """Display Pinecone statistics."""
@@ -2106,6 +2089,25 @@ class DashboardPipeline:
             
             if flags:
                 print(f"   Flags: {', '.join(flags)}")
+
+    def _ask_for_pinecone_clip_similarities(self, results: List[Dict[str, Any]], search_type: str = "semantic") -> None:
+        """Ask user if they want to see CLIP-based similar photos for Pinecone results"""
+        if not results:
+            return
+
+        # Check if CLIP embeddings are available
+        status = get_embeddings_status()
+        if not status['embeddings_ready']:
+            print("\n🔍 CLIP similarity search not available (run generate_clip_embeddings.py first)")
+            return
+
+        print(f"\n🔍 CLIP-based similar photo search available!")
+        print("This will find visually similar photos for each result using computer vision.")
+        
+        choice = input("Show CLIP similarities? (y/N): ").strip().lower()
+        if choice in ['y', 'yes']:
+            # Use existing CLIP similarity functionality
+            self._ask_for_clip_similarities(results)
 
 
 def main() -> None:
