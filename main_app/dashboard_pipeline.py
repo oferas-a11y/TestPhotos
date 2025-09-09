@@ -1071,27 +1071,53 @@ class PineconeSearch:
             model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
             query_vector = model.encode([query])[0].tolist()
             
-            # Get more results for Gemini reranking (30) or requested amount
-            initial_k = min(30, 100) if use_gemma_reranking else n_results
+            # Always get 30 results for Gemini reranking (or max available)
+            initial_k = 30
             results = self.pinecone_handler.search_photos(query_vector, initial_k)
             initial_results = self._format_pinecone_results(results)
 
             # Apply Gemini reranking if enabled and available
-            if use_gemma_reranking and len(initial_results) > n_results and GEMINI_AVAILABLE:
+            if use_gemma_reranking and GEMINI_AVAILABLE and len(initial_results) > 0:
                 try:
                     print("🤖 [PINECONE DEBUG] Enhancing Pinecone results with Gemini AI reranking...")
                     print(f"🔍 [PINECONE DEBUG] Initial Pinecone results: {len(initial_results)}")
                     print(f"🔍 [PINECONE DEBUG] Requesting top {n_results} from Gemini")
                     print(f"🔍 [PINECONE DEBUG] Query: '{query}'")
 
-                    # Clean results for Gemini reranking
+                    # Clean results for Gemini reranking - remove ALL scoring information
                     clean_results = []
                     for result in initial_results:
-                        clean_result = result.copy()
-                        # Remove fields that might indicate ranking/scoring
-                        keys_to_remove = ['similarity_score', 'pinecone_result', 'id', 'metadata']
-                        for key in keys_to_remove:
-                            clean_result.pop(key, None)
+                        clean_result = {}
+                        
+                        # Include essential identification fields
+                        clean_result['filename'] = result.get('filename', 'Unknown')
+                        clean_result['original_path'] = result.get('original_path', '')
+                        clean_result['processed_path'] = result.get('processed_path', '')
+                        clean_result['colorized_path'] = result.get('colorized_path', '')
+                        clean_result['file_stem'] = result.get('file_stem', '')
+                        clean_result['collection_folder'] = result.get('collection_folder', '')
+                        
+                        # Include full text content for Gemini analysis
+                        if result.get('document'):
+                            clean_result['description'] = result['document']
+                        
+                        # Include relevant metadata for context
+                        clean_result['indoor_outdoor'] = result.get('indoor_outdoor', '')
+                        clean_result['total_people'] = result.get('total_people', 0)
+                        clean_result['men_count'] = result.get('men_count', 0)
+                        clean_result['women_count'] = result.get('women_count', 0)
+                        clean_result['people_under_18'] = result.get('people_under_18', False)
+                        clean_result['has_jewish_symbols'] = result.get('has_jewish_symbols', False)
+                        clean_result['has_nazi_symbols'] = result.get('has_nazi_symbols', False)
+                        clean_result['signs_of_violence'] = result.get('signs_of_violence', False)
+                        clean_result['has_ocr_text'] = result.get('has_ocr_text', False)
+                        clean_result['has_hebrew_text'] = result.get('has_hebrew_text', False)
+                        clean_result['has_german_text'] = result.get('has_german_text', False)
+                        clean_result['total_objects'] = result.get('total_objects', 0)
+                        
+                        # DO NOT include any scoring or ranking information
+                        # NO similarity_score, NO pinecone_result, NO id, NO metadata dict
+                        
                         clean_results.append(clean_result)
 
                     reranker = GemmaReranker()
@@ -1638,7 +1664,8 @@ class DashboardPipeline:
             k_int = 10
 
         print(f"\n🔍 Searching Pinecone for: '{query}'...")
-        results = self.pinecone_search.semantic_search(query, k_int)
+        # Automatically use Gemini reranking (will fallback if not available)
+        results = self.pinecone_search.semantic_search(query, k_int, use_gemma_reranking=True)
 
         if not results:
             print("❌ No results found")
