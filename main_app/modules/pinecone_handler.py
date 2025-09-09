@@ -51,10 +51,36 @@ class PineconePhotoHandler:
         except Exception as e:
             raise ConnectionError(f"Failed to initialize Pinecone client: {e}")
         
-        # Initialize or get index (dimension will be set during first data storage)
-        self.index = None
+        # Initialize connection to existing index if it exists
+        self.index = self._connect_to_existing_index()
         
         print(f"✅ Pinecone handler ready: {self.index_name}")
+    
+    def _connect_to_existing_index(self):
+        """Connect to existing Pinecone index if it exists."""
+        try:
+            existing_indexes = [idx.name for idx in self.client.list_indexes()]
+            
+            if self.index_name in existing_indexes:
+                print(f"📍 Connecting to existing Pinecone index: {self.index_name}")
+                index = self.client.Index(self.index_name)
+                
+                # Get dimension from existing index
+                try:
+                    index_stats = index.describe_index_stats()
+                    self.dimension = index_stats.dimension
+                    print(f"📐 Index dimension: {self.dimension}")
+                except Exception as e:
+                    print(f"⚠️  Could not get index stats: {e}")
+                
+                return index
+            else:
+                print(f"ℹ️  Index '{self.index_name}' does not exist yet")
+                return None
+                
+        except Exception as e:
+            print(f"⚠️  Could not connect to existing index: {e}")
+            return None
     
     def _initialize_index(self, dimension: int):
         """Initialize or get existing Pinecone index with the correct dimension."""
