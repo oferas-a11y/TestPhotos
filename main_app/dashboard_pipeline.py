@@ -1071,27 +1071,53 @@ class PineconeSearch:
             model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
             query_vector = model.encode([query])[0].tolist()
             
-            # Get more results for Gemini reranking (30) or requested amount
-            initial_k = min(30, 100) if use_gemma_reranking else n_results
+            # Always get 30 results for Gemini reranking (or max available)
+            initial_k = 30
             results = self.pinecone_handler.search_photos(query_vector, initial_k)
             initial_results = self._format_pinecone_results(results)
 
             # Apply Gemini reranking if enabled and available
-            if use_gemma_reranking and len(initial_results) > n_results and GEMINI_AVAILABLE:
+            if use_gemma_reranking and GEMINI_AVAILABLE and len(initial_results) > 0:
                 try:
                     print("🤖 [PINECONE DEBUG] Enhancing Pinecone results with Gemini AI reranking...")
                     print(f"🔍 [PINECONE DEBUG] Initial Pinecone results: {len(initial_results)}")
                     print(f"🔍 [PINECONE DEBUG] Requesting top {n_results} from Gemini")
                     print(f"🔍 [PINECONE DEBUG] Query: '{query}'")
 
-                    # Clean results for Gemini reranking
+                    # Clean results for Gemini reranking - remove ALL scoring information
                     clean_results = []
                     for result in initial_results:
-                        clean_result = result.copy()
-                        # Remove fields that might indicate ranking/scoring
-                        keys_to_remove = ['similarity_score', 'pinecone_result', 'id', 'metadata']
-                        for key in keys_to_remove:
-                            clean_result.pop(key, None)
+                        clean_result = {}
+                        
+                        # Include essential identification fields
+                        clean_result['filename'] = result.get('filename', 'Unknown')
+                        clean_result['original_path'] = result.get('original_path', '')
+                        clean_result['processed_path'] = result.get('processed_path', '')
+                        clean_result['colorized_path'] = result.get('colorized_path', '')
+                        clean_result['file_stem'] = result.get('file_stem', '')
+                        clean_result['collection_folder'] = result.get('collection_folder', '')
+                        
+                        # Include full text content for Gemini analysis
+                        if result.get('document'):
+                            clean_result['description'] = result['document']
+                        
+                        # Include relevant metadata for context
+                        clean_result['indoor_outdoor'] = result.get('indoor_outdoor', '')
+                        clean_result['total_people'] = result.get('total_people', 0)
+                        clean_result['men_count'] = result.get('men_count', 0)
+                        clean_result['women_count'] = result.get('women_count', 0)
+                        clean_result['people_under_18'] = result.get('people_under_18', False)
+                        clean_result['has_jewish_symbols'] = result.get('has_jewish_symbols', False)
+                        clean_result['has_nazi_symbols'] = result.get('has_nazi_symbols', False)
+                        clean_result['signs_of_violence'] = result.get('signs_of_violence', False)
+                        clean_result['has_ocr_text'] = result.get('has_ocr_text', False)
+                        clean_result['has_hebrew_text'] = result.get('has_hebrew_text', False)
+                        clean_result['has_german_text'] = result.get('has_german_text', False)
+                        clean_result['total_objects'] = result.get('total_objects', 0)
+                        
+                        # DO NOT include any scoring or ranking information
+                        # NO similarity_score, NO pinecone_result, NO id, NO metadata dict
+                        
                         clean_results.append(clean_result)
 
                     reranker = GemmaReranker()
@@ -1622,75 +1648,59 @@ class DashboardPipeline:
             print("   And that you have migrated your data to Pinecone.")
             return
 
-        while True:
-            print("\n🔍 Pinecone Semantic Search")
-            print("=" * 40)
-            
-            query = input("🔎 Enter your search query (or 'back'): ").strip()
-            
-            if not query or query.lower() == 'back':
-                break
-            
-            try:
-                results_count = input("📊 How many results? (default 10): ").strip()
-                n_results = int(results_count) if results_count else 10
-                n_results = max(1, min(n_results, 50))  # Limit between 1-50
-                
-                use_reranking_input = input("🤖 Use Gemini AI reranking? (Y/n): ").strip().lower()
-                use_reranking = use_reranking_input != 'n'
-                
-                print(f"\n🔍 Searching Pinecone for: '{query}'")
-                print(f"📊 Requesting {n_results} results")
-                if use_reranking:
-                    print("🤖 Gemini reranking: Enabled")
-                
-                results = self.pinecone_search.semantic_search(
-                    query=query,
-                    n_results=n_results,
-                    use_gemma_reranking=use_reranking
-                )
-                
-                if not results:
-                    print("❌ No results found.")
-                    continue
-                
-                print(f"\n✅ Found {len(results)} results")
-                
-                # Ask what to do with results
-                while True:
-                    print("\n📋 What would you like to do with these results?")
-                    print("1️⃣  Show detailed list")
-                    print("2️⃣  Create HTML gallery")  
-                    print("3️⃣  New search")
-                    print("0️⃣  Back to main menu")
-                    
-                    choice = input("\n🎯 Choose action (1-3, 0 for back): ").strip()
-                    
-                    if choice == "1":
-                        self._display_search_results(results, "Pinecone Semantic Search Results")
-                    elif choice == "2":
-                        gallery_file = self._create_html_gallery(
-                            results, 
-                            f"Pinecone Semantic Search - {query}",
-                            "pinecone_semantic"
-                        )
-                        print(f"📄 Gallery created: {gallery_file}")
-                        
-                        if input("🌐 Open in browser? (Y/n): ").strip().lower() != 'n':
-                            webbrowser.open(f"file://{gallery_file.absolute()}")
-                            
-                    elif choice == "3":
-                        break  # Break inner loop to start new search
-                    elif choice == "0":
-                        return  # Exit completely
-                    else:
-                        print("❌ Invalid choice. Please enter 1-3 or 0")
-                        
-            except KeyboardInterrupt:
-                print("\n👋 Search cancelled")
-                break
-            except Exception as e:
-                print(f"❌ Search error: {e}")
+        stats = self.pinecone_search.get_stats()
+        print(f"📊 Pinecone contains {stats.get('total_photos', 0)} photos")
+
+        print("\n🔍 Pinecone Semantic Search (Cloud Vector Database)")
+        query = input("Enter search query: ").strip()
+        if not query:
+            print("Empty query")
+            return
+
+        k_input = input("Top K results (1/5/10/20): ").strip() or '10'
+        try:
+            k_int = min(50, max(1, int(k_input)))
+        except ValueError:
+            k_int = 10
+
+        print(f"\n🔍 Searching Pinecone for: '{query}'...")
+        # Automatically use Gemini reranking (will fallback if not available)
+        results = self.pinecone_search.semantic_search(query, k_int, use_gemma_reranking=True)
+
+        if not results:
+            print("❌ No results found")
+            return
+
+        print(f"\n🎯 Found {len(results)} results from Pinecone:")
+        for i, r in enumerate(results, 1):
+            similarity = r.get('similarity_score', 0.0)
+            orig_path = r.get('original_path', 'Unknown')
+            filename = Path(orig_path).name if orig_path else f"Result {i}"
+            print(f"{i}. {filename} (similarity: {similarity:.3f})")
+
+            desc = r.get('document', '')
+            if desc and len(desc) > 100:
+                print(f"   {desc[:100]}...")
+            elif desc:
+                print(f"   {desc}")
+
+        # Generate and open gallery automatically
+        try:
+            out_html = self._create_html_gallery(
+                results, 
+                f"Pinecone Semantic Search - {query}",
+                "pinecone_semantic"
+            )
+            print(f"\n📄 Gallery saved: {out_html}")
+
+            # Open in browser automatically
+            webbrowser.open(f"file://{out_html.absolute()}")
+            print("✅ Gallery opened in browser")
+        except Exception as e:
+            print(f"❌ Failed to generate gallery: {e}")
+
+        # Ask if user wants to see CLIP-based similar photos (if available)
+        self._ask_for_pinecone_clip_similarities(results, search_type="semantic")
                 
     def get_pinecone_stats(self) -> None:
         """Display Pinecone statistics."""
@@ -1949,6 +1959,182 @@ class DashboardPipeline:
         ])
 
         return "".join(parts)
+
+    def _create_html_gallery(self, results: List[Dict[str, Any]], title: str, search_type: str) -> Path:
+        """Create HTML gallery for search results."""
+        self.data_loader.output_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = self.data_loader.output_dir / f"{search_type}_{ts}.html"
+
+        def esc(t: str) -> str:
+            return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+        def get_image_url(result: Dict[str, Any]) -> str:
+            """Get base64 data URL for original image."""
+            orig_path = result.get('original_path', '')
+            if not orig_path:
+                return ""
+
+            # Get absolute path
+            project_root = self.data_loader.output_dir.parent.parent
+            source_path = project_root / orig_path
+
+            if source_path.exists():
+                try:
+                    import base64
+                    with open(source_path, 'rb') as f:
+                        img_data = f.read()
+                    ext = source_path.suffix.lower()
+                    if ext == '.jpg' or ext == '.jpeg':
+                        mime_type = 'image/jpeg'
+                    elif ext == '.png':
+                        mime_type = 'image/png'
+                    else:
+                        mime_type = 'image/jpeg'
+                    
+                    b64_data = base64.b64encode(img_data).decode('utf-8')
+                    return f"data:{mime_type};base64,{b64_data}"
+                except Exception:
+                    pass
+            return ""
+
+        # HTML template
+        parts = [
+            "<!DOCTYPE html>",
+            "<html>",
+            "<head>",
+            f"<title>{esc(title)}</title>",
+            "<style>",
+            "body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }",
+            "h1 { color: #333; text-align: center; }",
+            ".gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }",
+            ".item { background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }",
+            ".item img { max-width: 100%; height: auto; border-radius: 4px; }",
+            ".filename { font-weight: bold; color: #0066cc; margin: 10px 0 5px 0; }",
+            ".score { color: #666; font-size: 0.9em; margin-bottom: 10px; }",
+            ".metadata { font-size: 0.85em; color: #555; margin-top: 10px; }",
+            ".metadata div { margin: 2px 0; }",
+            ".no-image { width: 100%; height: 200px; background: #f0f0f0; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #666; border-radius: 4px; }",
+            "</style>",
+            "</head>",
+            "<body>",
+            f"<h1>{esc(title)}</h1>",
+            f"<p>Found {len(results)} results</p>",
+            "<div class='gallery'>"
+        ]
+
+        for i, result in enumerate(results):
+            parts.append("<div class='item'>")
+            
+            # Image
+            img_url = get_image_url(result)
+            if img_url:
+                parts.append(f"<img src='{img_url}' alt='Photo {i+1}'>")
+            else:
+                parts.append("<div class='no-image'>Image not available</div>")
+            
+            # Filename and score
+            filename = result.get('filename', 'Unknown')
+            score = result.get('similarity_score', 0)
+            parts.append(f"<div class='filename'>{esc(filename)}</div>")
+            parts.append(f"<div class='score'>Similarity Score: {score:.3f}</div>")
+            
+            # Metadata
+            parts.append("<div class='metadata'>")
+            
+            metadata_fields = [
+                ('original_path', 'Path'),
+                ('total_people', 'People Count'),
+                ('has_jewish_symbols', 'Jewish Symbols'),
+                ('has_nazi_symbols', 'Nazi Symbols'),
+                ('signs_of_violence', 'Violence'),
+                ('has_ocr_text', 'Has Text'),
+                ('has_hebrew_text', 'Hebrew Text'),
+                ('has_german_text', 'German Text'),
+                ('indoor_outdoor', 'Location')
+            ]
+            
+            for field, label in metadata_fields:
+                value = result.get(field)
+                if value is not None and str(value).strip():
+                    if isinstance(value, bool):
+                        value_str = "Yes" if value else "No"
+                    else:
+                        value_str = str(value)
+                    parts.append(f"<div><strong>{label}:</strong> {esc(value_str)}</div>")
+            
+            parts.append("</div>")
+            parts.append("</div>")
+
+        parts.extend([
+            "</div>",
+            f"<p style='text-align: center; margin-top: 30px; color: #666;'>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>",
+            "</body>",
+            "</html>"
+        ])
+
+        # Write file
+        with open(out, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(parts))
+
+        return out
+
+    def _display_search_results(self, results: List[Dict[str, Any]], title: str) -> None:
+        """Display search results in a formatted list."""
+        if not results:
+            print("No results to display.")
+            return
+
+        print(f"\n{title}")
+        print("=" * len(title))
+        
+        for i, result in enumerate(results, 1):
+            filename = result.get('filename', 'Unknown')
+            score = result.get('similarity_score', 0)
+            path = result.get('original_path', '')
+            
+            print(f"\n{i}. {filename}")
+            print(f"   Score: {score:.3f}")
+            print(f"   Path: {path}")
+            
+            # Show key metadata
+            people = result.get('total_people', 0)
+            if people > 0:
+                print(f"   People: {people}")
+            
+            flags = []
+            if result.get('has_jewish_symbols'):
+                flags.append("Jewish symbols")
+            if result.get('has_nazi_symbols'):
+                flags.append("Nazi symbols")
+            if result.get('signs_of_violence'):
+                flags.append("Violence")
+            if result.get('has_hebrew_text'):
+                flags.append("Hebrew text")
+            if result.get('has_german_text'):
+                flags.append("German text")
+            
+            if flags:
+                print(f"   Flags: {', '.join(flags)}")
+
+    def _ask_for_pinecone_clip_similarities(self, results: List[Dict[str, Any]], search_type: str = "semantic") -> None:
+        """Ask user if they want to see CLIP-based similar photos for Pinecone results"""
+        if not results:
+            return
+
+        # Check if CLIP embeddings are available
+        status = get_embeddings_status()
+        if not status['embeddings_ready']:
+            print("\n🔍 CLIP similarity search not available (run generate_clip_embeddings.py first)")
+            return
+
+        print(f"\n🔍 CLIP-based similar photo search available!")
+        print("This will find visually similar photos for each result using computer vision.")
+        
+        choice = input("Show CLIP similarities? (y/N): ").strip().lower()
+        if choice in ['y', 'yes']:
+            # Use existing CLIP similarity functionality
+            self._ask_for_clip_similarities(results)
 
 
 def main() -> None:
