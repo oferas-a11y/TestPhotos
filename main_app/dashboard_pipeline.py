@@ -124,6 +124,36 @@ except ImportError as e:
         """Return None for dummy implementation."""
         return None
 
+# Import Pinecone handler
+try:
+    from modules.pinecone_handler import (  # type: ignore
+        PineconePhotoHandler,
+        create_pinecone_handler
+    )
+    PINECONE_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Pinecone unavailable: {e}")
+    PINECONE_AVAILABLE = False
+
+    # Create dummy handler to avoid import errors
+    class PineconePhotoHandler:
+        """Dummy PineconePhotoHandler class for when module is unavailable."""
+
+        def __init__(self, *args, **kwargs):
+            """Initialize dummy handler."""
+
+        def search_photos(self, *args, **kwargs):
+            """Return empty search results."""
+            return []
+
+        def get_collection_stats(self):
+            """Return empty stats."""
+            return {'total_photos': 0, 'error': 'Pinecone not available'}
+
+    def create_pinecone_handler(*args, **kwargs):
+        """Return None for dummy implementation."""
+        return None
+
 
 class DataLoader:
     """Loads and manages CSV data for searching."""
@@ -999,6 +1029,137 @@ class ChromaSearch:
         return out
 
 
+class PineconeSearch:
+    """Pinecone cloud-based search functionality."""
+
+    def __init__(self, data_loader: DataLoader):
+        self.data_loader = data_loader
+        self.pinecone_handler = None
+        self._initialize_pinecone()
+
+    def _initialize_pinecone(self) -> None:
+        """Initialize Pinecone handler if available."""
+        if not PINECONE_AVAILABLE:
+            print("⚠️  Pinecone not available. Install with: pip install pinecone-client")
+            return
+
+        try:
+            self.pinecone_handler = create_pinecone_handler()
+            if self.pinecone_handler:
+                print("✅ Pinecone search initialized")
+            else:
+                print("❌ Failed to initialize Pinecone handler")
+        except Exception as e:
+            print(f"❌ Pinecone initialization error: {e}")
+
+    def is_available(self) -> bool:
+        """Check if Pinecone search is available."""
+        return self.pinecone_handler is not None
+
+    def semantic_search(self, query: str, n_results: int = 10,
+                        use_gemma_reranking: bool = True) -> List[Dict[str, Any]]:
+        """Perform semantic search using Pinecone with optional Gemini reranking."""
+        if not self.pinecone_handler:
+            print("❌ Pinecone not available for search")
+            return []
+
+        try:
+            # First, we need to create an embedding for the query
+            from sentence_transformers import SentenceTransformer
+            
+            # Load the same model used for creating embeddings
+            model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+            query_vector = model.encode([query])[0].tolist()
+            
+            # Get more results for Gemini reranking (30) or requested amount
+            initial_k = min(30, 100) if use_gemma_reranking else n_results
+            results = self.pinecone_handler.search_photos(query_vector, initial_k)
+            initial_results = self._format_pinecone_results(results)
+
+            # Apply Gemini reranking if enabled and available
+            if use_gemma_reranking and len(initial_results) > n_results and GEMINI_AVAILABLE:
+                try:
+                    print("🤖 [PINECONE DEBUG] Enhancing Pinecone results with Gemini AI reranking...")
+                    print(f"🔍 [PINECONE DEBUG] Initial Pinecone results: {len(initial_results)}")
+                    print(f"🔍 [PINECONE DEBUG] Requesting top {n_results} from Gemini")
+                    print(f"🔍 [PINECONE DEBUG] Query: '{query}'")
+
+                    # Clean results for Gemini reranking
+                    clean_results = []
+                    for result in initial_results:
+                        clean_result = result.copy()
+                        # Remove fields that might indicate ranking/scoring
+                        keys_to_remove = ['similarity_score', 'pinecone_result', 'id', 'metadata']
+                        for key in keys_to_remove:
+                            clean_result.pop(key, None)
+                        clean_results.append(clean_result)
+
+                    reranker = GemmaReranker()
+                    reranked_results = reranker.rerank_results(query, clean_results, top_k=n_results)
+
+                    print(f"✅ [PINECONE DEBUG] Gemini reranking complete: {len(reranked_results)} results returned")
+                    return reranked_results
+
+                except Exception as e:
+                    print(f"❌ [PINECONE DEBUG] Gemini reranking failed: {e}")
+                    print("📋 [PINECONE DEBUG] Continuing with Pinecone results only")
+
+            # Fallback to original Pinecone ranking
+            return initial_results[:n_results]
+
+        except Exception as e:
+            print(f"❌ Pinecone semantic search failed: {e}")
+            return []
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get Pinecone index statistics."""
+        if not self.pinecone_handler:
+            return {'total_photos': 0, 'error': 'Pinecone not available', 'available': False}
+
+        try:
+            stats = self.pinecone_handler.get_collection_stats()
+            stats['available'] = True
+            return stats
+        except Exception as e:
+            return {'total_photos': 0, 'error': str(e), 'available': False}
+
+    def _format_pinecone_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Format Pinecone search results to match expected structure."""
+        formatted_results = []
+        
+        for result in results:
+            metadata = result.get('metadata', {})
+            
+            # Convert Pinecone result to expected format
+            formatted_result = {
+                'id': result.get('id', ''),
+                'similarity_score': result.get('score', 0.0),
+                'original_path': metadata.get('original_path', ''),
+                'filename': metadata.get('filename', ''),
+                'file_stem': metadata.get('file_stem', ''),
+                'processed_path': metadata.get('processed_path', ''),
+                'colorized_path': metadata.get('colorized_path', ''),
+                'collection_folder': metadata.get('collection_folder', ''),
+                'indoor_outdoor': metadata.get('indoor_outdoor', ''),
+                'total_people': int(metadata.get('total_people', 0)) if metadata.get('total_people') else 0,
+                'men_count': int(metadata.get('men_count', 0)) if metadata.get('men_count') else 0,
+                'women_count': int(metadata.get('women_count', 0)) if metadata.get('women_count') else 0,
+                'people_under_18': metadata.get('people_under_18', '').lower() == 'true',
+                'has_jewish_symbols': metadata.get('has_jewish_symbols', '').lower() == 'true',
+                'has_nazi_symbols': metadata.get('has_nazi_symbols', '').lower() == 'true',
+                'signs_of_violence': metadata.get('signs_of_violence', '').lower() == 'true',
+                'has_ocr_text': metadata.get('has_ocr_text', '').lower() == 'true',
+                'has_hebrew_text': metadata.get('has_hebrew_text', '').lower() == 'true',
+                'has_german_text': metadata.get('has_german_text', '').lower() == 'true',
+                'total_objects': int(metadata.get('total_objects', 0)) if metadata.get('total_objects') else 0,
+                'document': metadata.get('document', ''),
+                'pinecone_result': result  # Store original result for debugging
+            }
+            formatted_results.append(formatted_result)
+        
+        return formatted_results
+
+
 class DashboardPipeline:
     """Main dashboard pipeline coordinator."""
 
@@ -1007,6 +1168,7 @@ class DashboardPipeline:
         self.category_search = CategorySearch(self.data_loader)
         self.semantic_search = SemanticSearch(self.data_loader)
         self.chroma_search = ChromaSearch(self.data_loader)
+        self.pinecone_search = PineconeSearch(self.data_loader)
 
     def run_category_search(self) -> None:
         """Run interactive category search."""
@@ -1451,6 +1613,105 @@ class DashboardPipeline:
             print(f"   Error: {stats['error']}")
         else:
             print("   Status: ✅ Ready")
+
+    def run_pinecone_semantic_search(self) -> None:
+        """Run Pinecone-based semantic search."""
+        if not self.pinecone_search.is_available():
+            print("❌ Pinecone search is not available.")
+            print("   Make sure PINECONE_API_KEY is set in .env file")
+            print("   And that you have migrated your data to Pinecone.")
+            return
+
+        while True:
+            print("\n🔍 Pinecone Semantic Search")
+            print("=" * 40)
+            
+            query = input("🔎 Enter your search query (or 'back'): ").strip()
+            
+            if not query or query.lower() == 'back':
+                break
+            
+            try:
+                results_count = input("📊 How many results? (default 10): ").strip()
+                n_results = int(results_count) if results_count else 10
+                n_results = max(1, min(n_results, 50))  # Limit between 1-50
+                
+                use_reranking_input = input("🤖 Use Gemini AI reranking? (Y/n): ").strip().lower()
+                use_reranking = use_reranking_input != 'n'
+                
+                print(f"\n🔍 Searching Pinecone for: '{query}'")
+                print(f"📊 Requesting {n_results} results")
+                if use_reranking:
+                    print("🤖 Gemini reranking: Enabled")
+                
+                results = self.pinecone_search.semantic_search(
+                    query=query,
+                    n_results=n_results,
+                    use_gemma_reranking=use_reranking
+                )
+                
+                if not results:
+                    print("❌ No results found.")
+                    continue
+                
+                print(f"\n✅ Found {len(results)} results")
+                
+                # Ask what to do with results
+                while True:
+                    print("\n📋 What would you like to do with these results?")
+                    print("1️⃣  Show detailed list")
+                    print("2️⃣  Create HTML gallery")  
+                    print("3️⃣  New search")
+                    print("0️⃣  Back to main menu")
+                    
+                    choice = input("\n🎯 Choose action (1-3, 0 for back): ").strip()
+                    
+                    if choice == "1":
+                        self._display_search_results(results, "Pinecone Semantic Search Results")
+                    elif choice == "2":
+                        gallery_file = self._create_html_gallery(
+                            results, 
+                            f"Pinecone Semantic Search - {query}",
+                            "pinecone_semantic"
+                        )
+                        print(f"📄 Gallery created: {gallery_file}")
+                        
+                        if input("🌐 Open in browser? (Y/n): ").strip().lower() != 'n':
+                            webbrowser.open(f"file://{gallery_file.absolute()}")
+                            
+                    elif choice == "3":
+                        break  # Break inner loop to start new search
+                    elif choice == "0":
+                        return  # Exit completely
+                    else:
+                        print("❌ Invalid choice. Please enter 1-3 or 0")
+                        
+            except KeyboardInterrupt:
+                print("\n👋 Search cancelled")
+                break
+            except Exception as e:
+                print(f"❌ Search error: {e}")
+                
+    def get_pinecone_stats(self) -> None:
+        """Display Pinecone statistics."""
+        if not self.pinecone_search.is_available():
+            print("❌ Pinecone is not available")
+            print("   Make sure PINECONE_API_KEY is set in .env file")
+            print("   Get your free API key at: https://www.pinecone.io/")
+            return
+
+        stats = self.pinecone_search.get_stats()
+        print("📊 Pinecone Statistics:")
+        print(f"   Total photos: {stats.get('total_photos', 0)}")
+        print(f"   Index name: {stats.get('index_name', 'unknown')}")
+        print(f"   Vector dimension: {stats.get('dimension', 'unknown')}")
+        print(f"   Index fullness: {stats.get('index_fullness', 'unknown')}")
+        
+        if 'error' in stats:
+            print(f"   Error: {stats['error']}")
+        else:
+            print("   Status: ✅ Ready")
+            print("   🌐 Cloud-hosted and accessible from anywhere!")
 
     def _ask_for_chroma_clip_similarities(
                                           self,

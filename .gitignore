@@ -13,12 +13,25 @@ __pycache__/
 dist/
 build/
 
-# Environments
+# Environments and API Keys
 .env
 .env.*
+.env.local
+.env.production
+.env.development
 .venv/
 venv/
 env/
+
+# Security - Never commit these
+*.key
+*.pem
+api_keys.txt
+secrets.txt
+
+# Cloud database exports (sensitive data)
+*chromadb_export*.json
+*migration_backup*.json
 
 # OS/IDE
 .DS_Store

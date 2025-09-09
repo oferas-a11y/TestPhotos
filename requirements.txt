@@ -25,5 +25,6 @@ pytest-cov>=4.0.0
 pytesseract>=0.3.10
 sentence-transformers>=2.2.2
 
-# ChromaDB for vector database storage
-chromadb>=0.4.0
+# Vector database storage
+chromadb>=0.4.0  # Keep for migration
+pinecone>=5.0.0  # New primary vector database (renamed from pinecone-client)
