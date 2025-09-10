@@ -70,9 +70,10 @@ def initialize_handlers():
         print("🔤 Loading text embedding model...")
         text_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
     
-    if gemini_reranker is None:
-        print("🤖 Initializing Gemini reranker...")
-        gemini_reranker = GemmaReranker()
+    # Skip Gemini reranker initialization to save memory
+    # if gemini_reranker is None:
+    #     print("🤖 Initializing Gemini reranker...")
+    #     gemini_reranker = GemmaReranker()
 
 @app.route('/health')
 def health_check():
@@ -122,7 +123,7 @@ def semantic_search():
         # Get query parameters
         query = request.args.get('q', '').strip()
         max_results = int(request.args.get('limit', 15))
-        use_gemini = request.args.get('gemini', 'true').lower() == 'true'
+        use_gemini = False  # Disabled to save memory
         
         # Validation
         if not query:
