@@ -103,7 +103,27 @@ echo "🏥 Health check: https://your-railway-domain/health"
 echo "🔍 API status: https://your-railway-domain/api/status"
 echo "💰 Railway usage: $5 minimum, pay-per-use scaling"
 
-# Start the application in background
-exec "$@" &
+# Start the application with Gunicorn (production WSGI server)
+echo "🚂 Starting with Gunicorn production server..."
+
+# Calculate workers based on CPU cores (Railway provides 8 vCPU)  
+WORKERS=${WORKERS:-4}
+echo "   Workers: $WORKERS"
+echo "   Binding: 0.0.0.0:$PORT"
+
+# Start Gunicorn with optimal settings for Railway
+exec gunicorn \
+    --bind 0.0.0.0:$PORT \
+    --workers $WORKERS \
+    --worker-class sync \
+    --timeout 120 \
+    --keepalive 2 \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --log-level info \
+    --access-logfile - \
+    --error-logfile - \
+    app:app &
+
 PID=$!
 wait $PID
