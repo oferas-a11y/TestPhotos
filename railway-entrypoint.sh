@@ -98,10 +98,7 @@ trap 'echo "🛑 Railway shutdown signal received..."; kill -TERM $PID; wait $PI
 
 echo ""
 echo "🌟 All checks passed! Starting Flask application on Railway..."
-echo "📡 API will be available at: https://your-railway-domain/"
-echo "🏥 Health check: https://your-railway-domain/health"
-echo "🔍 API status: https://your-railway-domain/api/status"
-echo "💰 Railway usage: $5 minimum, pay-per-use scaling"
+echo "💡 Find your app URL in Railway dashboard under Deployments tab"
 
 # Start the application with Gunicorn (production WSGI server)
 echo "🚂 Starting with Gunicorn production server..."
@@ -117,7 +114,7 @@ exec gunicorn \
     --workers $WORKERS \
     --worker-class sync \
     --timeout 120 \
-    --keepalive 2 \
+    --keep-alive 2 \
     --max-requests 1000 \
     --max-requests-jitter 100 \
     --log-level info \
