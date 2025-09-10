@@ -12,9 +12,12 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 import base64
 
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, abort
 from flask_cors import CORS
 import numpy as np
+import mimetypes
+from PIL import Image
+import io
 
 # Add project paths
 project_root = str(Path(__file__).parent)
@@ -70,10 +73,22 @@ def initialize_handlers():
         print("🔤 Loading text embedding model...")
         text_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
     
-    # Skip Gemini reranker initialization to save memory
-    # if gemini_reranker is None:
-    #     print("🤖 Initializing Gemini reranker...")
-    #     gemini_reranker = GemmaReranker()
+    if gemini_reranker is None:
+        try:
+            print("🤖 Initializing Gemini reranker...")
+            # Check if GEMINI_API_KEY is available
+            gemini_key = os.getenv('GEMINI_API_KEY')
+            if gemini_key:
+                print(f"   ✅ GEMINI_API_KEY found (ending: ...{gemini_key[-4:]})")
+                gemini_reranker = GemmaReranker()
+                print("   ✅ Gemini reranker initialized successfully")
+            else:
+                print("   ⚠️  GEMINI_API_KEY not found - Gemini reranking disabled")
+                gemini_reranker = None
+        except Exception as e:
+            print(f"   ❌ Gemini initialization failed: {e}")
+            print("   🔄 Continuing without Gemini reranking")
+            gemini_reranker = None
 
 @app.route('/health')
 def health_check():
@@ -123,7 +138,7 @@ def semantic_search():
         # Get query parameters
         query = request.args.get('q', '').strip()
         max_results = int(request.args.get('limit', 15))
-        use_gemini = False  # Disabled to save memory
+        use_gemini = request.args.get('gemini', 'true').lower() == 'true'
         
         # Validation
         if not query:
@@ -152,11 +167,14 @@ def semantic_search():
         # Format results
         formatted_results = []
         for result in results:
+            photo_id = result.get('id')
             formatted_result = {
-                "id": result.get('id'),
+                "id": photo_id,
                 "score": result.get('score', 0.0),
                 "description": result.get('document', ''),
-                "metadata": result.get('metadata', {})
+                "metadata": result.get('metadata', {}),
+                "image_url": f"/api/photo/{photo_id}/image",
+                "thumbnail_url": f"/api/photo/{photo_id}/thumbnail"
             }
             
             # Add image path information
@@ -166,9 +184,9 @@ def semantic_search():
             
             formatted_results.append(formatted_result)
         
-        # Apply Gemini reranking if requested
+        # Apply Gemini reranking if requested and available
         reranked = False
-        if use_gemini and len(formatted_results) > 1:
+        if use_gemini and len(formatted_results) > 1 and gemini_reranker is not None:
             try:
                 print("🤖 Applying Gemini AI reranking...")
                 
@@ -195,6 +213,8 @@ def semantic_search():
                 formatted_results = formatted_results[:max_results]
         else:
             formatted_results = formatted_results[:max_results]
+            if use_gemini and gemini_reranker is None:
+                print("⚠️ Gemini reranking requested but not available")
         
         return jsonify({
             "query": query,
@@ -282,15 +302,161 @@ def get_photo(photo_id):
     try:
         initialize_handlers()
         
-        # For now, return basic info - in production you'd query your data store
-        return jsonify({
+        # Search for the photo in Pinecone to get metadata
+        # This is a simple implementation - in production you'd have a more efficient lookup
+        dummy_vector = [0.0] * 384  # MiniLM-L6-v2 dimension
+        results = pinecone_handler.search_photos(dummy_vector, top_k=1000)
+        
+        # Find the specific photo
+        photo_info = None
+        for result in results:
+            if result.get('id') == photo_id:
+                photo_info = result
+                break
+        
+        if not photo_info:
+            return jsonify({"error": f"Photo {photo_id} not found"}), 404
+        
+        # Format response with image URL
+        metadata = photo_info.get('metadata', {})
+        response = {
             "id": photo_id,
-            "message": "Photo details endpoint - implement based on your data structure",
-            "status": "placeholder"
-        })
+            "description": photo_info.get('document', ''),
+            "metadata": metadata,
+            "image_url": f"/api/photo/{photo_id}/image",
+            "thumbnail_url": f"/api/photo/{photo_id}/thumbnail"
+        }
+        
+        if 'original_path' in metadata:
+            response['original_path'] = metadata['original_path']
+        
+        return jsonify(response)
         
     except Exception as e:
         return jsonify({"error": f"Failed to get photo: {str(e)}"}), 500
+
+@app.route('/api/photo/<photo_id>/image')
+def get_photo_image(photo_id):
+    """Serve the actual photo image."""
+    try:
+        initialize_handlers()
+        
+        # Get photo metadata to find the image path
+        dummy_vector = [0.0] * 384
+        results = pinecone_handler.search_photos(dummy_vector, top_k=1000)
+        
+        photo_info = None
+        for result in results:
+            if result.get('id') == photo_id:
+                photo_info = result
+                break
+        
+        if not photo_info:
+            abort(404)
+        
+        # Get image path from metadata
+        metadata = photo_info.get('metadata', {})
+        image_path = metadata.get('original_path')
+        
+        if not image_path:
+            abort(404)
+        
+        # Try to find the image file
+        # Look in common photo directories
+        possible_paths = [
+            Path(image_path),
+            Path(project_root) / image_path,
+            Path(project_root) / "photos" / image_path,
+            Path(project_root) / Path(image_path).name
+        ]
+        
+        image_file = None
+        for path in possible_paths:
+            if path.exists() and path.is_file():
+                image_file = path
+                break
+        
+        if not image_file:
+            return jsonify({"error": f"Image file not found for photo {photo_id}"}), 404
+        
+        # Determine MIME type
+        mime_type, _ = mimetypes.guess_type(str(image_file))
+        if not mime_type:
+            mime_type = 'image/jpeg'
+        
+        return send_file(image_file, mimetype=mime_type)
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to serve image: {str(e)}"}), 500
+
+@app.route('/api/photo/<photo_id>/thumbnail')
+def get_photo_thumbnail(photo_id):
+    """Serve a thumbnail version of the photo."""
+    try:
+        initialize_handlers()
+        
+        # Get photo metadata
+        dummy_vector = [0.0] * 384
+        results = pinecone_handler.search_photos(dummy_vector, top_k=1000)
+        
+        photo_info = None
+        for result in results:
+            if result.get('id') == photo_id:
+                photo_info = result
+                break
+        
+        if not photo_info:
+            abort(404)
+        
+        metadata = photo_info.get('metadata', {})
+        image_path = metadata.get('original_path')
+        
+        if not image_path:
+            abort(404)
+        
+        # Find image file
+        possible_paths = [
+            Path(image_path),
+            Path(project_root) / image_path,
+            Path(project_root) / "photos" / image_path,
+            Path(project_root) / Path(image_path).name
+        ]
+        
+        image_file = None
+        for path in possible_paths:
+            if path.exists() and path.is_file():
+                image_file = path
+                break
+        
+        if not image_file:
+            return jsonify({"error": f"Image file not found for photo {photo_id}"}), 404
+        
+        # Create thumbnail
+        try:
+            with Image.open(image_file) as img:
+                # Create thumbnail (max 300x300)
+                img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+                
+                # Save to memory
+                img_io = io.BytesIO()
+                format = 'JPEG' if img.mode != 'RGBA' else 'PNG'
+                img.save(img_io, format=format, quality=85)
+                img_io.seek(0)
+                
+                mime_type = 'image/jpeg' if format == 'JPEG' else 'image/png'
+                
+                return send_file(img_io, mimetype=mime_type)
+        
+        except Exception as e:
+            # Fallback: serve original image if thumbnail creation fails
+            print(f"Thumbnail creation failed: {e}, serving original")
+            mime_type, _ = mimetypes.guess_type(str(image_file))
+            if not mime_type:
+                mime_type = 'image/jpeg'
+            return send_file(image_file, mimetype=mime_type)
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to serve thumbnail: {str(e)}"}), 500
 
 @app.errorhandler(404)
 def not_found(error):
