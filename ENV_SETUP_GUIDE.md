@@ -18,7 +18,7 @@ Add your API keys:
 ```bash
 # Historical Photos API Environment Variables
 # Required: Pinecone Vector Database
-PINECONE_API_KEY=pc-your-actual-pinecone-key-here
+PINECONE_API_KEY=your_actual_pinecone_key_here
 
 # Optional: AI Enhancement Services  
 GEMINI_API_KEY=your-actual-gemini-api-key-here
@@ -47,7 +47,7 @@ version: '3.8'
 services:
   testphotos-api:
     environment:
-      - PINECONE_API_KEY=pc-your-actual-key-here
+      - PINECONE_API_KEY=your_actual_key_here
       - GEMINI_API_KEY=your-gemini-key-here
       - GROQ_API_KEY=your-groq-key-here
 ```
@@ -61,7 +61,7 @@ export GEMINI_API_KEY="your-gemini-key-here"
 export GROQ_API_KEY="your-groq-key-here"
 
 # Make permanent (add to ~/.bashrc)
-echo 'export PINECONE_API_KEY="pc-your-key-here"' >> ~/.bashrc
+echo 'export PINECONE_API_KEY="your_key_here"' >> ~/.bashrc
 ```
 
 ### **Option 4: Docker Run Command**
@@ -70,7 +70,7 @@ If running manually with docker:
 ```bash
 docker run -d \
   -p 5000:5000 \
-  -e PINECONE_API_KEY="pc-your-key-here" \
+  -e PINECONE_API_KEY="your_key_here" \
   -e GEMINI_API_KEY="your-gemini-key-here" \
   -e GROQ_API_KEY="your-groq-key-here" \
   historical-photos-api
@@ -87,7 +87,7 @@ docker run -d \
   3. Go to API Keys section
   4. Copy your API key (starts with `pc-`)
 
-**Example:** `PINECONE_API_KEY=pc-1234abcd-5678-90ef-ghij-klmnopqrstuv`
+**Example:** `PINECONE_API_KEY=your_actual_pinecone_api_key_here`
 
 ### **2. Gemini (Optional but Recommended)**
 - Website: https://makersuite.google.com/app/apikey
@@ -97,7 +97,7 @@ docker run -d \
   2. Create new API key
   3. Copy the key
 
-**Example:** `GEMINI_API_KEY=AIzaSyABC123def456GHI789jkl012MNO345pqr`
+**Example:** `GEMINI_API_KEY=your_actual_gemini_api_key_here`
 
 ### **3. Groq (Optional)**
 - Website: https://groq.com/
@@ -107,14 +107,14 @@ docker run -d \
   2. Go to API Keys section
   3. Generate new key
 
-**Example:** `GROQ_API_KEY=gsk_abc123def456ghi789jkl012mno345pqr`
+**Example:** `GROQ_API_KEY=your_actual_groq_api_key_here`
 
 ## 📋 Environment Variable Reference
 
 ### **Required Variables:**
 | Variable | Purpose | Example | Required |
 |----------|---------|---------|----------|
-| `PINECONE_API_KEY` | Vector database access | `pc-1234...` | ✅ **YES** |
+| `PINECONE_API_KEY` | Vector database access | `your_key_here` | ✅ **YES** |
 
 ### **Optional Variables:**
 | Variable | Purpose | Default | Required |
@@ -145,7 +145,7 @@ nano .env            # Create from scratch
 3. **Add your API keys:**
 ```bash
 # Edit .env file with your actual keys
-PINECONE_API_KEY=pc-your-actual-key-here
+PINECONE_API_KEY=your_actual_key_here
 GEMINI_API_KEY=your-actual-key-here
 GROQ_API_KEY=your-actual-key-here
 ```
