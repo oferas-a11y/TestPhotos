@@ -1,0 +1,104 @@
+# Git
+.git
+.gitignore
+.github/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Output files (keep structure but ignore content)
+main_app_outputs/**/*.html
+main_app_outputs/**/*.txt
+main_app_outputs/**/*.json
+main_app_outputs/**/*.csv
+main_app_outputs/files_to_delete.txt
+
+# Local data files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Documentation (will create fresh)
+*.md
+!README.md
+
+# Docker files (avoid recursive copying)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Development scripts
+fix_*.py
+export_*.py
+migrate_*.py
+populate_*.py
+rebuild_*.py
+restore_*.py
+
+# Test files
+test_*.py
+tests/
+
+# ChromaDB files (using Pinecone instead)
+chroma_db/
+*.chroma
+
+# Render specific files
+render.yaml
+Procfile
+runtime.txt
