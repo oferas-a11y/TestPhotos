@@ -1,0 +1,44 @@
+# Railway-optimized requirements for Historical Photos API
+# Leverages 8GB RAM for full performance (no memory constraints)
+
+# Flask web server
+flask==2.3.3
+flask-cors==4.0.0
+gunicorn==21.2.0
+
+# Core dependencies
+numpy==1.24.3
+scikit-learn==1.3.0
+Pillow==10.0.1
+python-dotenv==1.0.0
+
+# AI and ML - Full performance versions for 8GB RAM
+sentence-transformers==2.2.2
+torch==2.1.0                    # Full PyTorch for maximum performance
+torchvision==0.16.0             # Computer vision support
+transformers==4.35.2
+tokenizers==0.15.0
+huggingface-hub==0.17.3
+safetensors==0.4.0              # Efficient model loading
+
+# AI API clients
+groq==0.9.0
+google-genai==1.15.0
+
+# Vector database
+pinecone==5.0.1
+
+# HTTP and networking (optimized for Railway)
+requests==2.31.0
+urllib3==2.0.7
+certifi==2023.7.22
+httpx==0.25.2                   # Modern async HTTP client
+
+# JSON and data handling
+tqdm==4.66.1
+packaging==23.2
+pydantic==2.5.0                 # Data validation
+
+# Performance and monitoring
+psutil==5.9.6                   # System monitoring
+uvloop==0.19.0                  # High-performance event loop
