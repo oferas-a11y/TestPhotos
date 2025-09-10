@@ -5,9 +5,9 @@ Complete guide for deploying your Historical Photos API on any VPS (RamNode, Dig
 ## 📋 Prerequisites
 
 ### VPS Requirements
-- **RAM:** 2GB minimum (4GB recommended)
-- **CPU:** 1 vCPU minimum 
-- **Storage:** 10GB minimum
+- **RAM:** 2GB (perfect for this app)
+- **CPU:** 2 cores (ideal for concurrent requests)
+- **Storage:** 60GB (plenty for logs and cache)
 - **OS:** Ubuntu 20.04+ or any Docker-compatible Linux
 
 ### Software Requirements
@@ -79,9 +79,11 @@ PORT=5000
 ```
 
 ### 2. Get API Keys
-- **Pinecone:** https://www.pinecone.io/ (Free: 1M vectors)
-- **Gemini:** https://makersuite.google.com/app/apikey (Free tier available)
-- **Groq:** https://groq.com/ (Free tier available)
+- **Pinecone:** https://www.pinecone.io/ (Free: 1M vectors) - **REQUIRED**
+- **Gemini:** https://makersuite.google.com/app/apikey (Free tier available) - **RECOMMENDED** 
+- **Groq:** https://groq.com/ (Free tier available) - Optional
+
+📖 **Detailed setup:** See `ENV_SETUP_GUIDE.md` for complete instructions
 
 ## 🚀 Deployment
 
@@ -286,17 +288,17 @@ print([idx.name for idx in client.list_indexes()])
 
 ## 📈 Performance Optimization
 
-### Resource Limits
-Edit `docker-compose.yml`:
+### Resource Limits (Optimized for 2GB VPS)
+Current `docker-compose.yml` settings:
 ```yaml
 deploy:
   resources:
     limits:
-      memory: 4G      # Adjust based on your VPS
-      cpus: '2.0'
+      memory: 1.5G    # Perfect for 2GB VPS
+      cpus: '2.0'     # Use both cores fully
     reservations:
-      memory: 1G
-      cpus: '0.5'
+      memory: 512M    # Good reservation
+      cpus: '0.5'     # Half core minimum
 ```
 
 ### Persistent Storage
