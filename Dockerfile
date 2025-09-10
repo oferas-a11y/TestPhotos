@@ -1,5 +1,5 @@
-# Multi-stage Dockerfile for Historical Photos API
-FROM python:3.11-slim as base
+# Multi-stage Dockerfile for Historical Photos API (1GB VPS optimized)
+FROM python:3.11-alpine as base
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -7,14 +7,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+# Install system dependencies (Alpine packages)
+RUN apk add --no-cache \
+    build-base \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    linux-headers \
+    && rm -rf /var/cache/apk/*
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app
+# Create non-root user (Alpine syntax)
+RUN addgroup -g 1000 app && \
+    adduser -u 1000 -G app -s /bin/sh -D app
 
 # Set working directory
 WORKDIR /app
@@ -22,8 +24,9 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with memory-efficient flags
+RUN pip install --no-cache-dir --no-deps -r requirements.txt || \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .

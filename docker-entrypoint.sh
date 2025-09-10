@@ -57,6 +57,24 @@ echo "   Flask Debug: $FLASK_DEBUG"
 echo "   Port: $PORT"
 echo "   Python Path: $PYTHONPATH"
 
+# Memory monitoring for VPS
+echo "💾 Memory Status:"
+if command -v free >/dev/null 2>&1; then
+    TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
+    AVAIL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $7}')
+    echo "   Total RAM: ${TOTAL_MEM}MB"
+    echo "   Available: ${AVAIL_MEM}MB"
+    
+    if [ "$AVAIL_MEM" -lt 800 ]; then
+        echo "   ⚠️  WARNING: Low memory detected (${AVAIL_MEM}MB available)"
+        echo "   💡 Consider restarting if app fails to initialize"
+    else
+        echo "   ✅ Memory looks good for app startup (${AVAIL_MEM}MB available)"
+    fi
+else
+    echo "   ℹ️  Memory monitoring not available"
+fi
+
 # Test Pinecone connection (optional quick check)
 echo "🔌 Testing Pinecone connection..."
 python3 -c "

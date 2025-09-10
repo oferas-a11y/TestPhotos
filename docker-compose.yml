@@ -37,15 +37,15 @@ services:
       retries: 3
       start_period: 60s
     
-    # Resource limits (adjust based on your VPS specs)
+    # Resource limits optimized for 2GB VPS  
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '1.0'
+          memory: 1.5G      # Comfortable limit for 2GB VPS
+          cpus: '2.0'       # Use both cores fully
         reservations:
-          memory: 512M
-          cpus: '0.25'
+          memory: 512M      # Good reservation for stable operation
+          cpus: '0.5'       # Reserve half core minimum
 
 # Optional: Nginx reverse proxy
   # nginx:
