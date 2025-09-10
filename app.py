@@ -16,7 +16,7 @@ from flask import Flask, request, jsonify, send_file, abort
 from flask_cors import CORS
 import numpy as np
 import mimetypes
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 
 # Add project paths
@@ -89,6 +89,79 @@ def initialize_handlers():
             print(f"   ❌ Gemini initialization failed: {e}")
             print("   🔄 Continuing without Gemini reranking")
             gemini_reranker = None
+
+def _is_lfs_pointer(file_path: Path) -> bool:
+    """Check if a file is a Git LFS pointer file."""
+    try:
+        with open(file_path, 'rb') as f:
+            head = f.read(200)
+        return head.startswith(b"version https://git-lfs.github.com/spec/v1")
+    except Exception:
+        return False
+
+def _find_image_file(image_path: str) -> Optional[Path]:
+    """Try to resolve an actual image file for a given metadata path.
+
+    Skips Git LFS pointer files and searches common locations.
+    """
+    candidates = [
+        Path(image_path),
+        Path(project_root) / image_path,
+        Path(project_root) / "photos" / image_path,
+        Path(project_root) / Path(image_path).name,
+    ]
+
+    # Prefer any non-LFS actual file among direct candidates
+    for p in candidates:
+        if p.exists() and p.is_file() and not _is_lfs_pointer(p):
+            return p
+
+    # As a last resort, try to find by basename under photo_collections
+    try:
+        base = Path(image_path).name
+        root = Path(project_root) / "photo_collections"
+        if root.exists():
+            for p in root.rglob(base):
+                if p.is_file() and not _is_lfs_pointer(p):
+                    return p
+    except Exception:
+        pass
+
+    return None
+
+def _placeholder_image(text: str, size=(300, 300)) -> io.BytesIO:
+    """Generate a simple placeholder image with text."""
+    img = Image.new('RGB', size, color=(240, 240, 240))
+    draw = ImageDraw.Draw(img)
+    # Attempt to load a default font; fall back to basic if unavailable
+    try:
+        font = ImageFont.load_default()
+    except Exception:
+        font = None
+    msg = text
+    # Wrap text manually for small images
+    lines = []
+    words = msg.split()
+    line = ''
+    for w in words:
+        test = f"{line} {w}".strip()
+        if font and draw.textlength(test, font=font) > size[0] - 20:
+            lines.append(line)
+            line = w
+        else:
+            line = test
+    if line:
+        lines.append(line)
+    y = (size[1] - (len(lines) * 14)) // 2
+    for ln in lines:
+        w = draw.textlength(ln, font=font) if font else len(ln) * 6
+        x = (size[0] - int(w)) // 2
+        draw.text((x, y), ln, fill=(80, 80, 80), font=font)
+        y += 16
+    bio = io.BytesIO()
+    img.save(bio, format='PNG')
+    bio.seek(0)
+    return bio
 
 @app.route('/health')
 def health_check():
@@ -173,8 +246,9 @@ def semantic_search():
                 "score": result.get('score', 0.0),
                 "description": result.get('document', ''),
                 "metadata": result.get('metadata', {}),
-                "image_url": f"/api/photo/{photo_id}/image",
-                "thumbnail_url": f"/api/photo/{photo_id}/thumbnail"
+                # Build absolute URLs for client convenience
+                "image_url": f"{request.host_url.rstrip('/')}/api/photo/{photo_id}/image",
+                "thumbnail_url": f"{request.host_url.rstrip('/')}/api/photo/{photo_id}/thumbnail"
             }
             
             # Add image path information
@@ -361,29 +435,18 @@ def get_photo_image(photo_id):
         if not image_path:
             abort(404)
         
-        # Try to find the image file
-        # Look in common photo directories
-        possible_paths = [
-            Path(image_path),
-            Path(project_root) / image_path,
-            Path(project_root) / "photos" / image_path,
-            Path(project_root) / Path(image_path).name
-        ]
-        
-        image_file = None
-        for path in possible_paths:
-            if path.exists() and path.is_file():
-                image_file = path
-                break
-        
+        # Resolve actual image file (skip Git LFS pointer files)
+        image_file = _find_image_file(image_path)
         if not image_file:
-            return jsonify({"error": f"Image file not found for photo {photo_id}"}), 404
-        
+            # Fallback: return placeholder image so clients can render something
+            placeholder = _placeholder_image("Image unavailable", size=(600, 600))
+            return send_file(placeholder, mimetype='image/png')
+
         # Determine MIME type
         mime_type, _ = mimetypes.guess_type(str(image_file))
         if not mime_type:
             mime_type = 'image/jpeg'
-        
+
         return send_file(image_file, mimetype=mime_type)
         
     except Exception as e:
@@ -414,22 +477,12 @@ def get_photo_thumbnail(photo_id):
         if not image_path:
             abort(404)
         
-        # Find image file
-        possible_paths = [
-            Path(image_path),
-            Path(project_root) / image_path,
-            Path(project_root) / "photos" / image_path,
-            Path(project_root) / Path(image_path).name
-        ]
-        
-        image_file = None
-        for path in possible_paths:
-            if path.exists() and path.is_file():
-                image_file = path
-                break
-        
+        # Find actual image file (skip LFS pointer files)
+        image_file = _find_image_file(image_path)
         if not image_file:
-            return jsonify({"error": f"Image file not found for photo {photo_id}"}), 404
+            # Return a thumbnail-sized placeholder
+            placeholder = _placeholder_image("Image unavailable", size=(300, 300))
+            return send_file(placeholder, mimetype='image/png')
         
         # Create thumbnail
         try:
