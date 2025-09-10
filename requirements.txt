@@ -1,30 +1,25 @@
+# Flask web server
+flask>=2.3.0
+flask-cors>=4.0.0
+gunicorn>=21.0.0
+
 # Core dependencies
 numpy>=1.21.0
-opencv-python>=4.5.0
 scikit-learn>=1.0.0
-matplotlib>=3.5.0
 Pillow>=8.0.0
 python-dotenv>=1.0.0
 
-# YOLO object detection
-ultralytics>=8.0.0
+# AI and ML
+sentence-transformers>=2.2.2
 groq>=0.9.0
-
-# Gemma AI reranking
 google-genai>=1.15.0
 
-# CLIP semantic analysis (install separately to avoid conflicts)
-# torch and torchvision will be installed via ultralytics dependencies
-
-# Testing
-pytest>=7.0.0
-pytest-cov>=4.0.0
-
-# Additional packages for extended functionality
-# opencv-contrib-python>=4.5.0  # Alternative to opencv-python with extra modules
-pytesseract>=0.3.10
-sentence-transformers>=2.2.2
-
 # Vector database storage
-chromadb>=0.4.0  # Keep for migration
-pinecone>=5.0.0  # New primary vector database (renamed from pinecone-client)
+pinecone>=5.0.0
+
+# For local development only (not needed on Render)
+# opencv-python>=4.5.0
+# ultralytics>=8.0.0  
+# matplotlib>=3.5.0
+# pytesseract>=0.3.10
+# chromadb>=0.4.0

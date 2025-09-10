@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: historical-photos-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY  
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: false
