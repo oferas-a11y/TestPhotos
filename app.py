@@ -810,7 +810,8 @@ def semantic_search():
             "results": formatted_results,
             "total": len(formatted_results),
             "reranked": reranked,
-            "gemini_enabled": use_gemini
+            "gemini_enabled": use_gemini,
+            "debug_deployment_timestamp": "2025-09-11-fix-attempt-3"
         })
         
     except Exception as e:
