@@ -288,8 +288,8 @@ def admin_seed_one():
             # Stable-ish id from path
             custom_id = f"photo_{abs(hash(rel_path)) % (10**10):010d}"
 
-        # Encode with sentence-transformers (384D)
-        vec = text_model.encode([text])[0].tolist()
+        # Encode with sentence-transformers (384D) - normalized for better search quality
+        vec = text_model.encode([text], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
 
         record = {
             'id': custom_id,
@@ -644,7 +644,7 @@ def admin_upload_photo():
         custom_id = request.form.get('id') or f"photo_{abs(hash(safe_name)) % (10**10):010d}"
         logical_path = request.form.get('original_path') or f"uploaded_photos/{safe_name}"
 
-        vec = text_model.encode([text])[0].tolist()
+        vec = text_model.encode([text], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
         record = {
             'id': custom_id,
             'embedding': vec,
@@ -727,8 +727,8 @@ def semantic_search():
         
         print(f"🔍 Semantic search: '{query}' (limit: {max_results}, gemini: {use_gemini})")
         
-        # Create query embedding
-        query_vector = text_model.encode([query])[0].tolist()
+        # Create normalized query embedding for better search quality (matches dashboard pipeline)
+        query_vector = text_model.encode([query], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
         
         # Get initial results from Pinecone
         # If Gemini reranking is enabled, fetch at least as many as requested,
@@ -811,7 +811,7 @@ def semantic_search():
             "total": len(formatted_results),
             "reranked": reranked,
             "gemini_enabled": use_gemini,
-            "debug_deployment_timestamp": "2025-09-11-fix-attempt-3"
+            "debug_deployment_timestamp": "2025-09-11-embedding-normalization-fix"
         })
         
     except Exception as e:

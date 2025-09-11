@@ -1069,7 +1069,7 @@ class PineconeSearch:
             
             # Load the same model used for creating embeddings
             model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-            query_vector = model.encode([query])[0].tolist()
+            query_vector = model.encode([query], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
             
             # Always get 30 results for Gemini reranking (or max available)
             initial_k = 30

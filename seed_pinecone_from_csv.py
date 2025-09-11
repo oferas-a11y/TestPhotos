@@ -70,7 +70,7 @@ def main():
         base = Path(original_path).name or "photo"
         pid = f"photo_{int(time.time()*1000)%10**10:010d}_{base}"
 
-        vec = model.encode([text])[0].tolist()
+        vec = model.encode([text], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
         rec = {
             'id': pid,
             'embedding': vec,

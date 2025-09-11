@@ -25,7 +25,7 @@ print('Text length:', len(text))
 # Encode
 print('Loading MiniLM model...')
 model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-vec = model.encode([text])[0].tolist()
+vec = model.encode([text], convert_to_tensor=False, normalize_embeddings=True)[0].tolist()
 print('Vector dim:', len(vec))
 
 # Upsert
