@@ -751,6 +751,7 @@ def semantic_search():
             metadata = result.get('metadata', {}) or {}
             # Prefer text stored under metadata['document'] (seeded from data_text.csv)
             desc = metadata.get('document', '') or metadata.get('comprehensive_text', '')
+            print(f"🔍 DEBUG: photo_id={photo_id}, desc length={len(desc)}, desc preview: '{desc[:100]}...'")
             formatted_result = {
                 "id": photo_id,
                 "score": result.get('score', 0.0),
