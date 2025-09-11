@@ -33,6 +33,11 @@ import os
 import sys
 from pathlib import Path
 from typing import Iterator, Tuple
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 def iter_images(root: Path) -> Iterator[Path]:
     exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff",
@@ -136,4 +141,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
