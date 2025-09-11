@@ -752,10 +752,12 @@ def semantic_search():
             # Prefer text stored under metadata['document'] (seeded from data_text.csv)
             desc = metadata.get('document', '') or metadata.get('comprehensive_text', '')
             print(f"🔍 DEBUG: photo_id={photo_id}, desc length={len(desc)}, desc preview: '{desc[:100]}...'")
+            # FORCE description to be metadata.document - DEBUG FIX
+            forced_desc = metadata.get('document', 'NO_DOCUMENT_FOUND') or metadata.get('comprehensive_text', 'NO_COMPREHENSIVE_TEXT')
             formatted_result = {
                 "id": photo_id,
                 "score": result.get('score', 0.0),
-                "description": desc,
+                "description": forced_desc,
                 "metadata": metadata,
                 # Build absolute URLs for client convenience
                 "image_url": f"{request.host_url.rstrip('/')}/api/photo/{photo_id}/image",
