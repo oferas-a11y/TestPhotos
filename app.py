@@ -18,6 +18,8 @@ import numpy as np
 import mimetypes
 from PIL import Image, ImageDraw, ImageFont
 import io
+from urllib.parse import quote
+from urllib.request import urlopen, Request
 
 # Add project paths
 project_root = str(Path(__file__).parent)
@@ -104,11 +106,25 @@ def _find_image_file(image_path: str) -> Optional[Path]:
 
     Skips Git LFS pointer files and searches common locations.
     """
+    # Optional external root for production (e.g., Railway volume)
+    photo_root = os.getenv('PHOTO_ROOT')
+    root_candidates = []
+    if photo_root:
+        pr = Path(photo_root)
+        # Try full relative path under PHOTO_ROOT
+        root_candidates.append(pr / image_path)
+        # Try basename only under PHOTO_ROOT
+        root_candidates.append(pr / Path(image_path).name)
+
+    upload_root = Path(project_root) / "uploaded_photos"
     candidates = [
+        *root_candidates,
         Path(image_path),
         Path(project_root) / image_path,
         Path(project_root) / "photos" / image_path,
         Path(project_root) / Path(image_path).name,
+        upload_root / image_path,
+        upload_root / Path(image_path).name,
     ]
 
     # Prefer any non-LFS actual file among direct candidates
@@ -162,6 +178,381 @@ def _placeholder_image(text: str, size=(300, 300)) -> io.BytesIO:
     img.save(bio, format='PNG')
     bio.seek(0)
     return bio
+
+def _candidate_remote_urls(image_path: str, is_thumb: bool = False) -> List[str]:
+    """Build candidate remote URLs for an image based on env config.
+
+    Supported env vars:
+    - IMAGE_URL_TEMPLATE: e.g., "https://cdn.example.com/photos/{basename}"
+    - IMAGE_CDN_BASE: e.g., "https://cdn.example.com/photos" (joined with basename or path)
+    - THUMB_URL_TEMPLATE / THUMB_CDN_BASE: overrides for thumbnails
+    - IMAGE_PATH_MODE: "basename" (default) or "fullpath"
+    """
+    urls: List[str] = []
+    basename = Path(image_path).name
+    rel_path = str(image_path)
+    path_mode = os.getenv('IMAGE_PATH_MODE', 'basename').lower()
+
+    if is_thumb:
+        tpl = os.getenv('THUMB_URL_TEMPLATE')
+        base = os.getenv('THUMB_CDN_BASE')
+    else:
+        tpl = os.getenv('IMAGE_URL_TEMPLATE')
+        base = os.getenv('IMAGE_CDN_BASE')
+
+    # Template takes precedence
+    if tpl:
+        try:
+            urls.append(tpl.format(basename=quote(basename), path=quote(rel_path)))
+        except Exception:
+            pass
+
+    # Base URL join
+    if base:
+        base = base.rstrip('/')
+        if path_mode == 'fullpath':
+            urls.append(f"{base}/{quote(rel_path)}")
+        # Always also try basename for robustness
+        urls.append(f"{base}/{quote(basename)}")
+
+    return [u for u in urls if u]
+
+def _fetch_remote_bytes(url: str, timeout: int = 15) -> Optional[bytes]:
+    """Fetch remote URL bytes using urllib. Returns None on failure."""
+    try:
+        req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except Exception:
+        return None
+
+@app.route('/api/admin/seed_one', methods=['POST', 'GET'])
+def admin_seed_one():
+    """Seed a single Pinecone record pointing to a local image file on the server.
+
+    Security: requires `ADMIN_TOKEN` env var and matching `token` query/body param.
+
+    Params:
+    - token: must match ADMIN_TOKEN
+    - path: relative path to image file (e.g., photo_collections/..../file.jpg)
+    - text (optional): description text; defaults to filename
+    - id (optional): custom id; defaults to generated
+    """
+    try:
+        admin_token = os.getenv('ADMIN_TOKEN')
+        provided = request.values.get('token')
+        if admin_token and provided != admin_token:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        initialize_handlers()
+
+        rel_path = request.values.get('path', '').strip()
+        if not rel_path:
+            return jsonify({"error": "Missing 'path' parameter"}), 400
+
+        img_path = Path(rel_path)
+        if not img_path.is_absolute():
+            img_path = Path(project_root) / img_path
+
+        if not img_path.exists() or not img_path.is_file() or _is_lfs_pointer(img_path):
+            return jsonify({"error": f"Image not available on server: {rel_path}"}), 400
+
+        text = request.values.get('text', '')
+        if not text:
+            text = Path(rel_path).stem.replace('_', ' ').replace('-', ' ')
+
+        custom_id = request.values.get('id')
+        if not custom_id:
+            # Stable-ish id from path
+            custom_id = f"photo_{abs(hash(rel_path)) % (10**10):010d}"
+
+        # Encode with sentence-transformers (384D)
+        vec = text_model.encode([text])[0].tolist()
+
+        record = {
+            'id': custom_id,
+            'embedding': vec,
+            'metadata': {
+                'original_path': str(Path(rel_path)),
+                'source': 'admin_seed_one'
+            },
+            'document': text
+        }
+
+        # Upsert
+        pinecone_handler.store_batch_analysis([record])
+
+        return jsonify({
+            'seeded': True,
+            'id': custom_id,
+            'image_available': True,
+            'image_url': f"/api/photo/{custom_id}/image",
+            'thumbnail_url': f"/api/photo/{custom_id}/thumbnail",
+            'original_path': str(Path(rel_path))
+        })
+
+    except Exception as e:
+        print(f"❌ admin_seed_one error: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to seed record: {str(e)}"}), 500
+
+@app.route('/api/photos', methods=['GET'])
+def list_photos():
+    """Return a simple paginated list of photos, prioritizing entries with real images.
+
+    Query params:
+    - limit (int, default 15, max 50): number of items to return
+    - offset (int, default 0): number of items to skip (best-effort)
+
+    Note: This uses a neutral vector query to sample photos from the index.
+    Results order is not guaranteed stable; intended for initial gallery loads.
+    """
+    try:
+        # Lightweight init: only Pinecone handler for browsing
+        global pinecone_handler
+        if pinecone_handler is None:
+            pinecone_handler = create_pinecone_handler()
+            if pinecone_handler is None:
+                return jsonify({"error": "Failed to initialize Pinecone handler"}), 500
+
+        # Parse params
+        limit = int(request.args.get('limit', 15))
+        offset = int(request.args.get('offset', 0))
+        if limit < 1 or limit > 50:
+            return jsonify({"error": "Limit must be between 1 and 50"}), 400
+        if offset < 0:
+            return jsonify({"error": "Offset must be >= 0"}), 400
+
+        # Use a dummy vector to fetch a pool of candidates
+        # Fallback to 384 dims like other endpoints if dimension is unknown
+        dim = getattr(pinecone_handler, 'dimension', None) or 384
+        dummy_vector = [0.0] * dim
+
+        # Fetch a generous pool, then prioritize those with real images
+        pool_size = min(max(limit * 5, 50), 1000)
+        raw_results = pinecone_handler.search_photos(dummy_vector, top_k=pool_size)
+
+        if not raw_results:
+            return jsonify({
+                "results": [],
+                "total": 0,
+                "offset": offset,
+                "limit": limit
+            })
+
+        # Split results into those with available image files and those without
+        with_images = []
+        without_images = []
+
+        for r in raw_results:
+            pid = r.get('id')
+            md = r.get('metadata', {}) or {}
+            img_path = md.get('original_path')
+            has_real = False
+            if img_path:
+                try:
+                    has_real = _find_image_file(img_path) is not None
+                except Exception:
+                    has_real = False
+
+            formatted = {
+                "id": pid,
+                "score": r.get('score', 0.0),
+                "description": r.get('document', ''),
+                "metadata": md,
+                "image_url": f"{request.host_url.rstrip('/')}/api/photo/{pid}/image",
+                "thumbnail_url": f"{request.host_url.rstrip('/')}/api/photo/{pid}/thumbnail"
+            }
+
+            if has_real:
+                with_images.append(formatted)
+            else:
+                without_images.append(formatted)
+
+        # Apply offset and limit across the concatenated list, preferring real images first
+        ordered = with_images + without_images
+        sliced = ordered[offset:offset + limit]
+
+        return jsonify({
+            "results": sliced,
+            "total": len(ordered),
+            "offset": offset,
+            "limit": limit
+        })
+
+    except Exception as e:
+        print(f"❌ list_photos error: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to list photos: {str(e)}"}), 500
+
+
+@app.route('/debug/first')
+def debug_first_photo():
+    """Simple HTML page that shows one photo inline from the DB.
+
+    Useful for quickly verifying that localhost serves real images without downloading.
+    """
+    try:
+        global pinecone_handler
+        if pinecone_handler is None:
+            pinecone_handler = create_pinecone_handler()
+            if pinecone_handler is None:
+                return "<h1>Error</h1><p>Failed to init Pinecone handler.</p>", 500
+
+        dim = getattr(pinecone_handler, 'dimension', None) or 384
+        dummy_vector = [0.0] * dim
+        raw = pinecone_handler.search_photos(dummy_vector, top_k=200)
+        if not raw:
+            return "<h1>No photos</h1><p>Pinecone index is empty.</p>", 200
+
+        # Prefer a photo with a resolvable real image
+        chosen = None
+        for r in raw:
+            md = r.get('metadata', {}) or {}
+            p = md.get('original_path')
+            if p and _find_image_file(p):
+                chosen = r
+                break
+        if chosen is None:
+            chosen = raw[0]
+
+        pid = chosen.get('id')
+        thumb = f"/api/photo/{pid}/thumbnail"
+        full = f"/api/photo/{pid}/image"
+        html = f"""
+        <!doctype html>
+        <html><head><meta charset='utf-8'><title>First Photo</title>
+        <style>body{font-family:system-ui,Arial;margin:24px} img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px}</style>
+        </head><body>
+        <h1>First Photo</h1>
+        <p>ID: {pid}</p>
+        <p><a href='{full}' target='_blank'>Open Full Image</a></p>
+        <img src='{thumb}' alt='thumbnail'/>
+        </body></html>
+        """
+        return html
+    except Exception as e:
+        return f"<h1>Error</h1><pre>{str(e)}</pre>", 500
+
+
+@app.route('/debug/gallery')
+def debug_gallery():
+    """Simple HTML gallery of the first N photos (real images prioritized).
+
+    Params: limit (default 15)
+    """
+    try:
+        global pinecone_handler
+        if pinecone_handler is None:
+            pinecone_handler = create_pinecone_handler()
+            if pinecone_handler is None:
+                return "<h1>Error</h1><p>Failed to init Pinecone handler.</p>", 500
+
+        limit = int(request.args.get('limit', 15))
+        limit = max(1, min(limit, 50))
+        dim = getattr(pinecone_handler, 'dimension', None) or 384
+        dummy_vector = [0.0] * dim
+
+        pool = pinecone_handler.search_photos(dummy_vector, top_k=min(limit*5, 1000))
+        if not pool:
+            return "<h1>No photos</h1><p>Pinecone index is empty.</p>", 200
+
+        with_images, without_images = [], []
+        for r in pool:
+            pid = r.get('id')
+            md = r.get('metadata', {}) or {}
+            p = md.get('original_path')
+            target = with_images if (p and _find_image_file(p)) else without_images
+            target.append(pid)
+
+        ordered = (with_images + without_images)[:limit]
+
+        items = []
+        for pid in ordered:
+            items.append(f"<a href='/api/photo/{pid}/image' target='_blank'><img src='/api/photo/{pid}/thumbnail' alt='{pid}'/></a>")
+
+        grid = "\n".join(f"<div class='item'>{itm}</div>" for itm in items)
+        html = f"""
+        <!doctype html>
+        <html><head><meta charset='utf-8'><title>Gallery</title>
+        <style>
+        body{{font-family:system-ui,Arial;margin:24px}}
+        .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}}
+        .item img{{width:100%;height:auto;display:block;border:1px solid #ddd;border-radius:4px}}
+        </style>
+        </head><body>
+        <h1>Gallery (limit {limit})</h1>
+        <div class='grid'>
+        {grid}
+        </div>
+        </body></html>
+        """
+        return html
+    except Exception as e:
+        return f"<h1>Error</h1><pre>{str(e)}</pre>", 500
+
+
+@app.route('/api/admin/upload', methods=['POST'])
+def admin_upload_photo():
+    """Upload one image to the server and index it for immediate viewing.
+
+    Security: requires `ADMIN_TOKEN` env var and matching `token` form field.
+
+    Form fields:
+    - token: must match ADMIN_TOKEN
+    - file: image file to upload
+    - text (optional): description text for embedding
+    - id (optional): custom photo id; autogenerated if missing
+    - original_path (optional): logical path to store in metadata; defaults to uploaded filename
+    """
+    try:
+        admin_token = os.getenv('ADMIN_TOKEN')
+        provided = request.form.get('token')
+        if admin_token and provided != admin_token:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        if 'file' not in request.files:
+            return jsonify({"error": "Missing file"}), 400
+        file = request.files['file']
+        if not file.filename:
+            return jsonify({"error": "Empty filename"}), 400
+
+        # Save file
+        upload_dir = Path(os.getenv('UPLOAD_DIR', Path(project_root) / 'uploaded_photos'))
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = Path(file.filename).name
+        dest = upload_dir / safe_name
+        file.save(dest)
+
+        # Build metadata and vector
+        initialize_handlers()
+        text = request.form.get('text') or Path(safe_name).stem.replace('_', ' ').replace('-', ' ')
+        custom_id = request.form.get('id') or f"photo_{abs(hash(safe_name)) % (10**10):010d}"
+        logical_path = request.form.get('original_path') or f"uploaded_photos/{safe_name}"
+
+        vec = text_model.encode([text])[0].tolist()
+        record = {
+            'id': custom_id,
+            'embedding': vec,
+            'metadata': {
+                'original_path': logical_path,
+                'source': 'admin_upload'
+            },
+            'document': text
+        }
+        pinecone_handler.store_batch_analysis([record])
+
+        return jsonify({
+            'uploaded': True,
+            'id': custom_id,
+            'original_path': logical_path,
+            'image_url': f"/api/photo/{custom_id}/image",
+            'thumbnail_url': f"/api/photo/{custom_id}/thumbnail"
+        })
+    except Exception as e:
+        print(f"❌ admin_upload error: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
 
 @app.route('/health')
 def health_check():
@@ -438,7 +829,15 @@ def get_photo_image(photo_id):
         # Resolve actual image file (skip Git LFS pointer files)
         image_file = _find_image_file(image_path)
         if not image_file:
-            # Fallback: return placeholder image so clients can render something
+            # Try remote sources via CDN/URL templates
+            for url in _candidate_remote_urls(image_path, is_thumb=False):
+                data = _fetch_remote_bytes(url)
+                if data:
+                    bio = io.BytesIO(data)
+                    # Guess type from URL extension
+                    mime_type, _ = mimetypes.guess_type(url)
+                    return send_file(bio, mimetype=mime_type or 'image/jpeg')
+            # Fallback: return placeholder image
             placeholder = _placeholder_image("Image unavailable", size=(600, 600))
             return send_file(placeholder, mimetype='image/png')
 
@@ -480,6 +879,20 @@ def get_photo_thumbnail(photo_id):
         # Find actual image file (skip LFS pointer files)
         image_file = _find_image_file(image_path)
         if not image_file:
+            # Try remote sources
+            for url in _candidate_remote_urls(image_path, is_thumb=True):
+                data = _fetch_remote_bytes(url)
+                if data:
+                    try:
+                        with Image.open(io.BytesIO(data)) as img:
+                            img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+                            img_io = io.BytesIO()
+                            fmt = 'JPEG' if img.mode != 'RGBA' else 'PNG'
+                            img.save(img_io, format=fmt, quality=85)
+                            img_io.seek(0)
+                            return send_file(img_io, mimetype='image/jpeg' if fmt == 'JPEG' else 'image/png')
+                    except Exception:
+                        pass
             # Return a thumbnail-sized placeholder
             placeholder = _placeholder_image("Image unavailable", size=(300, 300))
             return send_file(placeholder, mimetype='image/png')
