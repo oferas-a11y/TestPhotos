@@ -15,6 +15,13 @@ This document explains how to quickly fetch photos for the UI (first 1–15), pe
 - Call `GET /api/search/semantic?q=<text>&limit=15` for semantic search.
 - Use each item’s `thumbnail_url` and `image_url` to render real images via the API.
 
+Local demo (ready-made)
+- Start: `python app.py` (auto-picks a free port if 5000 is busy)
+- Open: `http://localhost:<port>/demo`
+  - “Browse 15” → `/api/photos`
+  - “Search” → `/api/search/semantic`
+  - Each tile shows a REAL/PLACEHOLDER badge and opens the full image on click.
+
 ## Health & Status
 - `GET /health` → `{"status":"healthy","service":"historical-photos-api","version":"1.0.0"}`
 - `GET /api/status` → connection info (Pinecone, counts, services)
@@ -131,6 +138,13 @@ function renderThumb(item) {
 }
 ```
 
+Optional CLI dashboard (local machine)
+```
+BASE_URL=https://<your-app> \
+python scripts/railway_dashboard_cli.py -q "love" -l 15
+# Prints result rows with REAL/PLACEHOLDER for thumbnails
+```
+
 ## Photo Details
 - `GET /api/photo/{photo_id}` → returns metadata and the same `image_url`/`thumbnail_url` fields for the specific photo.
 
@@ -164,6 +178,9 @@ Deployment note (serving real photos):
   - `${BASE}/{basename}` and, if `IMAGE_PATH_MODE=fullpath`, `${BASE}/{original_path}`.
 - Or set `IMAGE_URL_TEMPLATE` / `THUMB_URL_TEMPLATE` with `{basename}` and `{path}` placeholders.
 - If none resolve and the file isn’t on disk, proxies return a placeholder PNG.
+
+Remote debug (deployed base):
+- `GET /debug/remote?base=<https://your-app>&q=<text>&limit=<n>` renders a gallery in the local browser that calls your deployed API and marks REAL/PLACEHOLDER for thumbnails.
 
 ## Using CLIP Vectors (Overview)
 - Goal: text-to-image and image-to-image search using OpenAI CLIP (512-D vectors).
@@ -216,3 +233,14 @@ python generate_clip_embeddings.py
 - Use `thumbnail_url` for lists; `image_url` for detail view.
 - Expect valid images or a placeholder PNG—never a broken image.
 - Endpoints are simple `GET`s with JSON for lists/details and direct image bytes for proxies.
+
+## Frontend Dev Notes
+- Local demo page: `http://localhost:<port>/demo` (already included), good for smoke testing.
+- Remote debug page: `http://localhost:<port>/debug/remote?base=<https://your-app>&q=<text>` to validate the deployed API.
+- All API routes are CORS-enabled and return either real images or a safe PNG placeholder—no broken images.
+
+## Status — Ready to Use
+- All listed API endpoints are implemented and active:
+  - `/health`, `/api/status`, `/api/photos`, `/api/search/semantic`, `/api/photo/{id}`, `/api/photo/{id}/thumbnail`, `/api/photo/{id}/image`
+- Local demo and remote debug pages are available for quick validation.
+- To ensure real images in production, set `IMAGE_CDN_BASE` and `IMAGE_PATH_MODE` (usually `fullpath`) and redeploy.

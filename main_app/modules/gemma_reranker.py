@@ -67,26 +67,9 @@ class GemmaReranker:
             filename = result.get('original_path', '').split('/')[-1] if result.get('original_path') else f'Photo {i}'
             print(f"  {i}. {filename}")
         
-        # Randomize results order to prevent bias from MiniLM ranking
-        shuffled_results = results.copy()
-        original_order = [r.get('original_path', '') for r in shuffled_results]
-        random.shuffle(shuffled_results)
-        shuffled_order = [r.get('original_path', '') for r in shuffled_results]
-        
-        print("🎲 DEBUG: After shuffling:")
-        for i, result in enumerate(shuffled_results[:5], 1):  # Show first 5
-            filename = result.get('original_path', '').split('/')[-1] if result.get('original_path') else f'Photo {i}'
-            print(f"  {i}. {filename}")
-        
-        # Verify randomization worked
-        if original_order == shuffled_order:
-            print("⚠️  DEBUG: WARNING - Shuffle didn't change order!")
-        else:
-            print("✅ DEBUG: Shuffle successful - order changed")
-        
         # Remove any similarity scores to prevent bias
         clean_results = []
-        for result in shuffled_results:
+        for result in results:
             clean_result = result.copy()
             # Remove any keys that might indicate ranking/scoring
             keys_to_remove = ['similarity', 'score', 'rank', 'distance', 'confidence']
@@ -99,7 +82,7 @@ class GemmaReranker:
         
         print(f"🧹 DEBUG: Removed scoring keys: {removed_keys}")
         
-        # Prepare context for Gemma with randomized input
+        # Prepare context for Gemma with input descriptions
         context = self._prepare_context(query, clean_results)
         
         try:
@@ -149,33 +132,25 @@ class GemmaReranker:
             "",
             "TASK: Rerank historical photograph search results to best match the user's research query.",
             "",
-            "⚠️  IMPORTANT: The photographs below are presented in RANDOM ORDER with NO similarity scores.",
-            "You must analyze each photograph independently and create your own ranking based on visual relevance.",
-            "DO NOT assume any existing order - the photos are shuffled and you must rank them from scratch.",
+            "⚠️  IMPORTANT: The items below are presented without similarity scores.",
+            "Analyze each item independently and create your own ranking based on TEXTUAL relevance.",
+            "DO NOT assume any existing order.",
             "",
             f"USER RESEARCH QUERY: \"{query}\"",
             "",
-            "STEP 1 - EXTRACT MAIN SUBJECT & FOCUS:",
-            "Identify the PRIMARY subject the user wants to see:",
+            "STEP 1 - EXTRACT MAIN SUBJECT & FOCUS (TEXTUAL):",
+            "Identify the PRIMARY concept the user seeks in text:",
             f"From the query \"{query}\", what is the MAIN SUBJECT or CONCEPT?",
-            "- If query mentions 'love', 'families', 'children' → Look for visible emotional connections, family bonds",
-            "- If query mentions 'violence', 'persecution', 'suffering' → Look for visible signs of hardship, oppression",
-            "- If query mentions 'daily life', 'work', 'activities' → Look for visible everyday activities, occupations",
-            "- If query mentions 'symbols', 'signs', 'text' → Look for visible symbols, writing, markings",
-            "- If query mentions specific places → Look for visible location markers, architecture, settings",
-            "- If query mentions specific people/groups → Look for visible identification of those people",
+            "Consider entities, actions, settings, symbols, and relationships explicitly described.",
             "",
-            "CORE VISUAL FOCUS: What should be VISIBLY PRESENT in the most relevant photos?",
+            "STEP 2 - TEXTUAL CONTENT ANALYSIS:",
+            "For each item, examine if the DESCRIPTION, CAPTION, and ITEMS clearly match the main subject:",
+            "- Is the main concept explicitly present in the description and/or caption?",
+            "- How specific and direct is the match?",
+            "- Does the context (time/place/actors) align with the query?",
+            "- Rate textual presence: STRONG (clear), MODERATE (somewhat), WEAK (barely), NONE (absent)",
             "",
-            "STEP 2 - VISUAL CONTENT ANALYSIS:",
-            "For each photograph, examine if you can SEE the main subject:",
-            "- Does this photo VISUALLY show the main concept from Step 1?",
-            "- Are the key visual elements actually visible and clear?",
-            "- How prominently is the main subject featured?",
-            "- Does the image provide visual evidence of what the user is looking for?",
-            "- Rate visual presence: STRONG (clearly visible), MODERATE (somewhat visible), WEAK (barely visible), NONE (not visible)",
-            "",
-            f"HISTORICAL PHOTOGRAPHS TO ANALYZE ({len(results)} total):",
+            f"ITEMS TO ANALYZE ({len(results)} total):",
             ""
         ]
         
@@ -184,39 +159,24 @@ class GemmaReranker:
             desc = result.get('description', '') or result.get('comprehensive_text', '')
             filename = result.get('original_path', '').split('/')[-1] if result.get('original_path') else f'Photo {i}'
             
-            context_parts.append(f"PHOTOGRAPH [{i}]: {filename}")
-            context_parts.append(f"Content Analysis: {desc[:800]}")  # Increased limit for better analysis
+            context_parts.append(f"ITEM [{i}]: {filename}")
+            context_parts.append(f"Description: {desc[:800]}")  # Use the embedded text description
+            caption = result.get('caption', '') or ''
+            if caption:
+                context_parts.append(f"Caption: {caption[:400]}")
+            items = result.get('items', '') or ''
+            if items:
+                context_parts.append(f"Items: {items[:400]}")
             context_parts.append("---")
         
         context_parts.extend([
             "",
-            "STEP 3 - RANKING BY VISUAL RELEVANCE:",
-            "Prioritize photographs that SHOW the main subject most clearly:",
-            "1. VISUAL MATCH: Does this photo clearly show what the user is looking for?",
-            "   - PRIORITY 1: Photos with STRONG visual presence of the main subject",
-            "   - PRIORITY 2: Photos with MODERATE visual presence", 
-            "   - PRIORITY 3: Photos with WEAK visual presence",
-            "   - LOWEST: Photos with NO visual presence (only mentioned in text)",
-            "",
-            "2. VISUAL QUALITY: How clearly can you see the main subject?",
-            "3. CONTEXT RELEVANCE: Does the setting/situation match the query?",
-            "4. HISTORICAL AUTHENTICITY: Is this genuine documentation of the subject?",
-            "",
-            "STEP 4 - FINAL RANKING DECISION:",
-            "⚠️  CRITICAL: The photos above are in RANDOM ORDER. You must create your OWN ranking.",
-            "Analyze each photograph independently and rank by how well they VISUALLY demonstrate the main subject:",
-            "",
-            "RANKING PRIORITY:",
-            "1st PRIORITY: Photos where you can CLEARLY SEE the main subject/concept",
-            "2nd PRIORITY: Photos where the main subject is SOMEWHAT VISIBLE", 
-            "3rd PRIORITY: Photos where the main subject is BARELY VISIBLE",
-            "LAST PRIORITY: Photos where the main subject is only mentioned in text but NOT VISIBLE",
-            "",
-            "Remember: The user wants to SEE evidence of their query, not just read about it.",
-            "Ignore the current order - create your own ranking based on visual relevance to the query.",
+            "STEP 3 - FINAL RANKING (TEXTUAL):",
+            "Rank items by how well their DESCRIPTION, CAPTION, and ITEMS match the query.",
+            "Prefer clear, specific textual matches over vague references.",
             "",
             "OUTPUT FORMAT:",
-            "Provide ONLY a JSON array with photograph indices in order of historical relevance:",
+            "Provide ONLY a JSON array with indices in order of textual relevance:",
             f"[most_relevant_index, second_most_relevant, ..., least_relevant]",
             f"Must include all {len(results)} indices from 1 to {len(results)}.",
             "",
@@ -303,19 +263,30 @@ class GemmaReranker:
             
             print(f"🎯 DEBUG: Using ranking: {ranking_json}")
             
-            # Reorder results based on ranking
+            # Reorder results based on ranking, with validation and de-duplication
+            seen = set()
             reranked = []
-            for rank_idx in ranking_json[:top_k]:
-                print(f"🔄 DEBUG: Processing rank index {rank_idx}")
-                if isinstance(rank_idx, int) and 1 <= rank_idx <= len(results):
+            for rank_idx in ranking_json:
+                if not isinstance(rank_idx, int):
+                    continue
+                if 1 <= rank_idx <= len(results) and rank_idx not in seen:
+                    seen.add(rank_idx)
                     result_copy = results[rank_idx - 1].copy()  # Convert to 0-based index
                     result_copy['gemma_rank'] = len(reranked) + 1
                     reranked.append(result_copy)
-                    filename = result_copy.get('original_path', '').split('/')[-1] if result_copy.get('original_path') else 'Unknown'
-                    print(f"  ✅ Added: {filename} (original pos {rank_idx}, new pos {len(reranked)})")
-                else:
-                    print(f"  ❌ Invalid index: {rank_idx} (not in range 1-{len(results)})")
-            
+                if len(reranked) >= top_k:
+                    break
+
+            # If fewer than requested, append remaining items in original order
+            if len(reranked) < top_k:
+                for i in range(1, len(results) + 1):
+                    if i not in seen:
+                        result_copy = results[i - 1].copy()
+                        result_copy['gemma_rank'] = len(reranked) + 1
+                        reranked.append(result_copy)
+                        if len(reranked) >= top_k:
+                            break
+
             print(f"📦 DEBUG: Reranked {len(reranked)} results")
             return reranked
             

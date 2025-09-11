@@ -18,6 +18,12 @@ import json
 from urllib.request import urlopen, Request
 from urllib.parse import urlencode
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 BASE = os.getenv('BASE_URL')
 if not BASE:
     print('Error: set BASE_URL to your server, e.g. https://testphotos-production.up.railway.app')
@@ -76,4 +82,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
