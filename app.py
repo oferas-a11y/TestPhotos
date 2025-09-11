@@ -18,7 +18,8 @@ import numpy as np
 import mimetypes
 from PIL import Image, ImageDraw, ImageFont
 import io
-from urllib.parse import quote
+import socket
+from urllib.parse import quote, urlencode
 from urllib.request import urlopen, Request
 
 # Add project paths
@@ -43,6 +44,18 @@ except ImportError as e:
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend access
+
+# Serve local demo page
+@app.route('/')
+@app.route('/demo')
+def serve_demo():
+    try:
+        demo_path = Path(project_root) / 'static' / 'demo.html'
+        if demo_path.exists():
+            return send_file(demo_path, mimetype='text/html')
+        return "<h1>Demo page missing</h1>", 404
+    except Exception as e:
+        return f"<h1>Error</h1><pre>{e}</pre>", 500
 
 # Global handlers (initialized on first request)
 pinecone_handler = None
@@ -223,6 +236,15 @@ def _fetch_remote_bytes(url: str, timeout: int = 15) -> Optional[bytes]:
         req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urlopen(req, timeout=timeout) as resp:
             return resp.read()
+    except Exception:
+        return None
+
+def _fetch_remote_json(url: str, timeout: int = 20) -> Optional[Dict[str, Any]]:
+    try:
+        req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urlopen(req, timeout=timeout) as resp:
+            data = resp.read().decode('utf-8', errors='replace')
+        return json.loads(data)
     except Exception:
         return None
 
@@ -492,6 +514,98 @@ def debug_gallery():
         return f"<h1>Error</h1><pre>{str(e)}</pre>", 500
 
 
+@app.route('/debug/remote')
+def debug_remote_gallery():
+    """Render a gallery in the local browser using results from a remote base URL.
+
+    Query params:
+    - base: remote base URL (defaults to BASE_URL env or local host)
+    - q: search query (default: people)
+    - limit: number of results (default: 15)
+    - gemini: true/false (default: false)
+    """
+    try:
+        base = request.args.get('base') or os.getenv('BASE_URL') or request.host_url.rstrip('/')
+        query = request.args.get('q', 'people')
+        limit = int(request.args.get('limit', 15))
+        use_gemini = request.args.get('gemini', 'false')
+
+        params = urlencode({'q': query, 'limit': str(limit), 'gemini': use_gemini})
+        api_url = f"{base.rstrip('/')}/api/search/semantic?{params}"
+        data = _fetch_remote_json(api_url)
+        if not data or 'results' not in data or not data['results']:
+            return f"<h1>No results</h1><p>Base: {base}<br/>Query: {query}</p>", 200
+
+        def probe_thumb(url: str) -> tuple[str, int]:
+            try:
+                req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urlopen(req, timeout=10) as resp:
+                    body = resp.read()
+                    ctype = resp.headers.get('Content-Type', '')
+                    return ctype, len(body)
+            except Exception:
+                return '', 0
+
+        cards = []
+        for r in data['results']:
+            pid = r.get('id')
+            thumb = r.get('thumbnail_url')
+            image = r.get('image_url')
+            if thumb and thumb.startswith('/'):
+                thumb = f"{base.rstrip('/')}{thumb}"
+            if image and image.startswith('/'):
+                image = f"{base.rstrip('/')}{image}"
+            ctype, nbytes = probe_thumb(thumb)
+            placeholder = (ctype.startswith('image/png') and nbytes < 5000)
+            badge = 'PLACEHOLDER' if placeholder else 'REAL'
+            color = '#c0392b' if placeholder else '#27ae60'
+            cards.append(f"""
+            <div class='item'>
+              <a href='{image}' target='_blank'><img src='{thumb}'/></a>
+              <div class='meta'>
+                <span class='badge' style='background:{color}'>{badge}</span>
+                <small>{ctype or 'unknown'} · {nbytes}B</small>
+                <div class='pid'>{pid}</div>
+              </div>
+            </div>
+            """)
+
+        html = f"""
+        <!doctype html>
+        <html><head><meta charset='utf-8'><title>Remote Gallery</title>
+        <style>
+        body{{font-family:system-ui,Arial;margin:24px}}
+        .hdr small{{color:#666}}
+        .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}}
+        .item img{{width:100%;height:auto;display:block;border:1px solid #ddd;border-radius:4px;background:#f9f9f9}}
+        .meta{{display:flex;gap:8px;align-items:center;margin-top:6px;justify-content:space-between}}
+        .badge{{color:#fff;padding:2px 6px;border-radius:4px;font-size:.8em}}
+        .pid{{font-size:.8em;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}}
+        form{{margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap}}
+        input[type=text]{{padding:6px 8px;min-width:220px}}
+        button{{padding:6px 10px}}
+        </style>
+        </head><body>
+        <div class='hdr'>
+          <h1>Remote Gallery</h1>
+          <small>Base: {base} · Query: {query} · Limit: {limit}</small>
+        </div>
+        <form method='get'>
+          <input type='text' name='base' value='{base}' placeholder='Base URL' />
+          <input type='text' name='q' value='{query}' placeholder='Query' />
+          <input type='text' name='limit' value='{limit}' />
+          <button type='submit'>Search</button>
+        </form>
+        <div class='grid'>
+          {''.join(cards)}
+        </div>
+        </body></html>
+        """
+        return html
+    except Exception as e:
+        return f"<h1>Error</h1><pre>{str(e)}</pre>", 500
+
+
 @app.route('/api/admin/upload', methods=['POST'])
 def admin_upload_photo():
     """Upload one image to the server and index it for immediate viewing.
@@ -616,8 +730,10 @@ def semantic_search():
         # Create query embedding
         query_vector = text_model.encode([query])[0].tolist()
         
-        # Get initial results from Pinecone (30 for Gemini reranking)
-        initial_k = 30 if use_gemini else max_results
+        # Get initial results from Pinecone
+        # If Gemini reranking is enabled, fetch at least as many as requested,
+        # and at least 30 to give the reranker a meaningful pool.
+        initial_k = max_results if not use_gemini else max(30, max_results)
         results = pinecone_handler.search_photos(query_vector, initial_k)
         
         if not results:
@@ -632,21 +748,23 @@ def semantic_search():
         formatted_results = []
         for result in results:
             photo_id = result.get('id')
+            metadata = result.get('metadata', {}) or {}
+            # Prefer text stored under metadata['document'] (seeded from data_text.csv)
+            desc = metadata.get('document', '') or metadata.get('comprehensive_text', '')
             formatted_result = {
                 "id": photo_id,
                 "score": result.get('score', 0.0),
-                "description": result.get('document', ''),
-                "metadata": result.get('metadata', {}),
+                "description": desc,
+                "metadata": metadata,
                 # Build absolute URLs for client convenience
                 "image_url": f"{request.host_url.rstrip('/')}/api/photo/{photo_id}/image",
                 "thumbnail_url": f"{request.host_url.rstrip('/')}/api/photo/{photo_id}/thumbnail"
             }
-            
+
             # Add image path information
-            metadata = result.get('metadata', {})
             if 'original_path' in metadata:
                 formatted_result['image_path'] = metadata['original_path']
-            
+
             formatted_results.append(formatted_result)
         
         # Apply Gemini reranking if requested and available
@@ -655,13 +773,16 @@ def semantic_search():
             try:
                 print("🤖 Applying Gemini AI reranking...")
                 
-                # Clean results for Gemini (remove scores)
+                # Clean results for Gemini (remove scores) and include caption/items
                 clean_results = []
                 for result in formatted_results:
+                    md = result.get('metadata', {}) or {}
                     clean_result = {
                         'id': result['id'],
                         'description': result['description'],
-                        'metadata': result['metadata']
+                        'caption': md.get('llm_caption') or md.get('caption') or '',
+                        'items': md.get('yolo_object_counts') or md.get('objects') or md.get('items') or '',
+                        'metadata': md,
                     }
                     clean_results.append(clean_result)
                 
@@ -938,8 +1059,24 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
+    def _choose_free_port(preferred: int, max_tries: int = 10) -> int:
+        p = preferred
+        for _ in range(max_tries):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    s.bind(('0.0.0.0', p))
+                    return p
+                except OSError:
+                    p += 1
+        return preferred
+
+    chosen = _choose_free_port(port)
+    if chosen != port:
+        print(f"⚠️  Port {port} busy; switching to {chosen}")
+    
     print("🚀 Starting Historical Photos API Server...")
-    print(f"📍 Port: {port}")
+    print(f"📍 Port: {chosen}")
     print(f"🔧 Debug: {debug}")
     
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    app.run(host='0.0.0.0', port=chosen, debug=debug)

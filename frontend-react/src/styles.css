@@ -1,0 +1,19 @@
+/* Black & White UI theme */
+:root { --bg:#111; --fg:#eee; --muted:#aaa; --ok:#2ecc71; --warn:#e74c3c; }
+*{ box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, Arial, sans-serif; }
+.hdr { display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:16px; border-bottom: 1px solid #222; }
+.hdr h1 { margin:0; font-size:18px; letter-spacing:0.5px; }
+.actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.txt { padding:6px 8px; min-width:260px; background:#000; color:var(--fg); border:1px solid #333; border-radius:4px; }
+button { padding:6px 10px; background:#000; color:var(--fg); border:1px solid #444; border-radius:4px; cursor:pointer; }
+button:hover { background:#111; }
+.status { padding:8px 16px; color: var(--muted); }
+.grid { padding:16px; display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.card img { width: 100%; height: auto; display: block; border:1px solid #333; border-radius:6px; background:#0a0a0a; filter: grayscale(0%); }
+.meta { display:flex; justify-content:space-between; align-items:center; margin-top:6px; color: var(--muted); }
+.badge { color:#fff; padding:2px 6px; border-radius:4px; font-size:.8em; }
+.badge.ok { background: var(--ok); }
+.badge.warn { background: var(--warn); }
+
