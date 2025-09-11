@@ -811,7 +811,7 @@ def semantic_search():
             "total": len(formatted_results),
             "reranked": reranked,
             "gemini_enabled": use_gemini,
-            "debug_deployment_timestamp": "2025-09-11-embedding-normalization-fix"
+            "debug_deployment_timestamp": "2025-09-11-minor-branch-update"
         })
         
     except Exception as e:
